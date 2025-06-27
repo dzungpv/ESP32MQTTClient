@@ -83,7 +83,7 @@ void wifi_init(void)
 }
 
 
-void onMqttConnect(esp_mqtt_client_handle_t client)
+void onMqttConnect(esp_mqtt_client_handle_t client, bool sessionPresent)
 {
     if (mqttClient.isMyTurn(client))
     {
@@ -122,6 +122,7 @@ extern "C" void app_main(void)
     mqttClient.setURI(MQTT_URI);
     mqttClient.enableLastWillMessage("lwt", "I am going offline");
     mqttClient.setKeepAlive(30);
+    mqttClient.setOnConnectCallback(onMqttConnect);
     mqttClient.setOnMessageCallback([](const std::string &topic, const std::string &payload) {
         ESP_LOGI(TAG, "Global callback: %s: %s", topic.c_str(), payload.c_str());
     });
