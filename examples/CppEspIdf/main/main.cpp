@@ -95,20 +95,6 @@ void onMqttConnect(esp_mqtt_client_handle_t client)
     }
 }
 
-#if ESP_IDF_VERSION < ESP_IDF_VERSION_VAL(5, 0, 0)
-esp_err_t handleMQTT(esp_mqtt_event_handle_t event)
-{
-    mqttClient.onEventCallback(event);
-    return ESP_OK;
-}
-#else
-void handleMQTT(void *handler_args, esp_event_base_t base, int32_t event_id, void *event_data)
-{
-    auto *event = static_cast<esp_mqtt_event_handle_t>(event_data);
-    mqttClient.onEventCallback(event);
-}
-#endif
-
 static void main_task(void *pvParameters)
 {
     int pubCount = 0;
