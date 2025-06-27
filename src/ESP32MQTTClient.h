@@ -35,6 +35,18 @@ private:
     int _mqttMaxInPacketSize;
     int _mqttMaxOutPacketSize;
 
+    struct TopicSubscriptionRecord
+    {
+        std::string topic;
+        MessageReceivedCallback callback;
+        MessageReceivedCallbackWithTopic callbackWithTopic;
+    };
+    std::vector<TopicSubscriptionRecord> _topicSubscriptionList;
+
+    // General behaviour related
+    bool _enableSerialLogs;
+    bool _drasticResetOnConnectionFailures;
+
 #if ESP_IDF_VERSION < ESP_IDF_VERSION_VAL(5, 0, 0)
     static esp_err_t handleMQTT(esp_mqtt_event_handle_t event);
 #else  // IDF CHECK
@@ -51,18 +63,9 @@ private:
     static void handleMQTT(void *handler_args, esp_event_base_t base, int32_t event_id, void *event_data);
 #endif // // IDF CHECK
 
-
-    struct TopicSubscriptionRecord
-    {
-        std::string topic;
-        MessageReceivedCallback callback;
-        MessageReceivedCallbackWithTopic callbackWithTopic;
-    };
-    std::vector<TopicSubscriptionRecord> _topicSubscriptionList;
-
-    // General behaviour related
-    bool _enableSerialLogs;
-    bool _drasticResetOnConnectionFailures;
+    void onMessageReceivedCallback(const char *topic, char *payload, unsigned int length);
+    bool mqttTopicMatch(const std::string &topic1, const std::string &topic2);
+    void onEventCallback(esp_mqtt_event_handle_t event);
 
 public:
     ESP32MQTTClient(/* args */);
@@ -130,11 +133,5 @@ public:
 
     void printError(esp_mqtt_error_codes_t *error_handle);
     
-    bool loopStart();
-
-    void onEventCallback(esp_mqtt_event_handle_t event);
-    
-private:
-    void onMessageReceivedCallback(const char *topic, char *payload, unsigned int length);
-    bool mqttTopicMatch(const std::string &topic1, const std::string &topic2);
+    bool loopStart();    
 };
