@@ -201,7 +201,8 @@ int ESP32MQTTClient::unsubscribe(const char *topic)
     return esp_mqtt_client_unsubscribe(_mqtt_client, topic);
 }
 
-int ESP32MQTTClient::publish(const char *topic, int qos, bool retain, const char *payload, int length, bool async)
+
+int ESP32MQTTClient::publish(const char *topic, const char *payload, int length, int qos, bool retain, bool async)
 {
     // drop message if not connected and QoS is 0
     if (!isConnected() && qos == 0)
@@ -626,15 +627,12 @@ void ESP32MQTTClient::onEventCallback(esp_mqtt_event_handle_t event)
                 ESP_LOGI(TAG, "MQTT -->> onMqttConnect");
             setConnectionState(true);
             _onConnect(event);
-            // onMqttConnect(_mqtt_client);
             break;
         }
         case MQTT_EVENT_DATA:
         {
             if (_enableSerialLogs)
                 ESP_LOGI(TAG, "MQTT -->> onMqttEventData");
-            std::string topic_str(event->topic, event->topic_len);
-            // onMessageReceivedCallback(topic_str.c_str(), event->data, event->data_len);
             _onMessage(event);
             break;
         }
@@ -734,6 +732,10 @@ void ESP32MQTTClient::_onMessage(esp_mqtt_event_handle_t &event)
     // printf("DATA_LEN=%d\r\n", event->data_len);
     // printf("TOTAL_DATA_LEN=%d\r\n", event->total_data_len);
     // printf("CURRENT_DATA_OFFSET=%d\r\n", event->current_data_offset);
+
+    // Backward compatible
+    std::string topic_str(event->topic, event->topic_len);
+    onMessageReceivedCallback(topic_str.c_str(), event->data, event->data_len);
 
     // Check if we are dealing with a simple message
     if (event->total_data_len == event->data_len)

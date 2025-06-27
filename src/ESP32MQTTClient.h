@@ -214,17 +214,25 @@ public:
      * @brief Publishes a message to a topic.
      *
      * @param topic The topic to publish to.
-     * @param qos The QoS level (0-2) for the message.
-     * @param retain The retain flag for the message.
      * @param payload The payload for the message. Defaults to nullptr.
      * @param length The length of the payload. Defaults to 0.
+     * @param qos The QoS level (0-2) for the message. If client not connected. Dropping message with QoS = 0.
+     * @param retain The retain flag for the message.
      * @param async Whether to enqueue the message for asynchronous publishing.
      * Defaults to true. False means blocking until the message is published.
      * @return Message ID on success, -1 on failure.
      */
-    int publish(const char *topic, int qos, bool retain, const char *payload = nullptr, int length = 0, bool async = true);
+    int publish(const char *topic, const char *payload = nullptr, int length = 0, int qos = 1, bool retain = false, bool async = true);
     
-    bool unsubscribe(const std::string &topic);                                       // Unsubscribes from the topic, if it exists, and removes it from the CallbackList.
+    /**
+     * @brief Unsubscribes from a topic. Server must be connected
+     * for an unsubscription to succeed. And removes it from the CallbackList.
+     *
+     * @param topic The topic to unsubscribe from.
+     * @return Message ID on success, -1 on failure.
+     */
+    bool unsubscribe(const std::string &topic); 
+
     /**
      * @brief Sets the keep alive interval in seconds for the MQTT connection.
      *
