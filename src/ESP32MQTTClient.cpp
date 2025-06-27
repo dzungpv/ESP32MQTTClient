@@ -301,7 +301,7 @@ void ESP32MQTTClient::printError(esp_mqtt_error_codes_t *error_handle)
 esp_err_t ESP32MQTTClient::handleMQTT(esp_mqtt_event_handle_t event)
 {
     // Since this is a static function, we need to cast the first argument (void*) back to the class instance type
-    ESP32MQTTClient *instance = (ESP32MQTTClient *)handler_args;
+    ESP32MQTTClient *instance = static_cast<ESP32MQTTClient*>(handler_args);
     instance->onEventCallback(event);
     return ESP_OK;
 }
@@ -310,7 +310,7 @@ void ESP32MQTTClient::handleMQTT(void *handler_args, esp_event_base_t base, int3
 {
     auto *event = static_cast<esp_mqtt_event_handle_t>(event_data);
     // Since this is a static function, we need to cast the first argument (void*) back to the class instance type
-    ESP32MQTTClient *instance = (ESP32MQTTClient *)handler_args;
+    ESP32MQTTClient *instance = static_cast<ESP32MQTTClient*>(handler_args);
     instance->onEventCallback(event);
 }
 #endif
