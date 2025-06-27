@@ -95,6 +95,15 @@ void onMqttConnect(esp_mqtt_client_handle_t client, bool sessionPresent)
     }
 }
 
+void onMqttMessage(esp_mqtt_client_handle_t client, char *topic, char *payload, int retain, int qos, bool dup)
+{
+    if (mqttClient.isMyTurn(client))
+    {
+        ESP_LOGI(TAG, "Message received: topic: %s qos: %d dup: %d retain: %d", topic, qos, dup, retain);
+         ESP_LOGI(TAG, "Message payload: %s", payload);
+    }
+}
+
 static void main_task(void *pvParameters)
 {
     int pubCount = 0;
@@ -123,9 +132,7 @@ extern "C" void app_main(void)
     mqttClient.enableLastWillMessage("lwt", "I am going offline");
     mqttClient.setKeepAlive(30);
     mqttClient.setOnConnectCallback(onMqttConnect);
-    mqttClient.setOnMessageCallback([](const std::string &topic, const std::string &payload) {
-        ESP_LOGI(TAG, "Global callback: %s: %s", topic.c_str(), payload.c_str());
-    });
+    mqttClient.setOnMessageCallback(onMqttMessage);
     
     xTaskCreate(&main_task, "main_task", 4096, NULL, 5, NULL);
 }

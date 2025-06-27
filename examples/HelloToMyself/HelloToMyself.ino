@@ -13,6 +13,27 @@ char *publishTopic = "bar/bar";
 
 ESP32MQTTClient mqttClient; // all params are set later
 
+void onMqttConnect(esp_mqtt_client_handle_t client, bool sessionPresent)
+{
+    if (mqttClient.isMyTurn(client)) // can be omitted if only one client
+    {
+        mqttClient.subscribe(subscribeTopic, [](const std::string &payload)
+                             { log_i("%s: %s", subscribeTopic, payload.c_str()); });
+
+        mqttClient.subscribe("bar/#", [](const std::string &topic, const std::string &payload)
+                             { log_i("%s: %s", topic.c_str(), payload.c_str()); });
+    }
+}
+
+void onMqttMessage(esp_mqtt_client_handle_t client, char *topic, char *payload, int retain, int qos, bool dup)
+{
+    if (mqttClient.isMyTurn(client))
+    {
+        ESP_LOGI(TAG, "Message received: topic: %s qos: %d dup: %d retain: %d", topic, qos, dup, retain);
+         ESP_LOGI(TAG, "Message payload: %s", payload);
+    }
+}
+
 void setup()
 {
     // Serial.begin(115200);
@@ -25,9 +46,8 @@ void setup()
     mqttClient.setURI(server);
     mqttClient.enableLastWillMessage("lwt", "I am going offline");
     mqttClient.setKeepAlive(30);
-    mqttClient.setOnMessageCallback([](const std::string &topic, const std::string &payload) {
-        log_i("Global callback: %s: %s", topic.c_str(), payload.c_str());
-    });
+    mqttClient.setOnConnectCallback(onMqttConnect);
+    mqttClient.setOnMessageCallback(onMqttMessage);
     WiFi.begin(ssid, pass);
     WiFi.setHostname("c3test");
     mqttClient.loopStart();
@@ -41,16 +61,4 @@ void loop()
     std::string msg = "Hello: " + std::to_string(pubCount++);
     mqttClient.publish(publishTopic, msg, 0, false);
     delay(2000);
-}
-
-void onMqttConnect(esp_mqtt_client_handle_t client, bool sessionPresent)
-{
-    if (mqttClient.isMyTurn(client)) // can be omitted if only one client
-    {
-        mqttClient.subscribe(subscribeTopic, [](const std::string &payload)
-                             { log_i("%s: %s", subscribeTopic, payload.c_str()); });
-
-        mqttClient.subscribe("bar/#", [](const std::string &topic, const std::string &payload)
-                             { log_i("%s: %s", topic.c_str(), payload.c_str()); });
-    }
 }

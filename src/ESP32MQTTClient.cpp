@@ -10,7 +10,6 @@ ESP32MQTTClient::ESP32MQTTClient(/* args */)
     _mqttMaxOutPacketSize = _mqttMaxInPacketSize;
     _mqttLastWillTopic = nullptr;
     _mqttLastWillMessage = nullptr;
-    _globalMessageReceivedCallback = nullptr;
 }
 
 ESP32MQTTClient::~ESP32MQTTClient()
@@ -81,12 +80,7 @@ void ESP32MQTTClient::setKey(const char *clientKey)
     _mqtt_config.credentials.authentication.key = clientKey;
 #endif // IDF CHECK
 }
-// =============== Public functions for interaction with thus lib =================
-
-void ESP32MQTTClient::setOnMessageCallback(MessageReceivedCallbackWithTopic callback)
-{
-    _globalMessageReceivedCallback = callback;
-}
+// =============== Public functions for interaction with this lib =================
 
 void ESP32MQTTClient::setConnectionState(bool state)
 {
@@ -601,10 +595,6 @@ void ESP32MQTTClient::onMessageReceivedCallback(const char *topic, char *payload
     // Logging
     if (_enableSerialLogs)
         ESP_LOGI(TAG, "MQTT >> [%s] %s", topic, payloadStr.c_str());
-
-    if (_globalMessageReceivedCallback) {
-        _globalMessageReceivedCallback(topicStr, payloadStr);
-    }
 
     // Send the message to subscribers
     for (std::size_t i = 0; i < _topicSubscriptionList.size(); i++)
