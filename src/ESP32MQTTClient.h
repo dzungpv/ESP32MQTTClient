@@ -36,7 +36,7 @@ private:
     int _mqttMaxOutPacketSize;
 
 #if ESP_IDF_VERSION < ESP_IDF_VERSION_VAL(5, 0, 0)
-    esp_err_t handleMQTT(esp_mqtt_event_handle_t event);
+    static esp_err_t handleMQTT(esp_mqtt_event_handle_t event);
 #else  // IDF CHECK
     /*
      * @brief Event handler registered to receive MQTT events
@@ -48,7 +48,7 @@ private:
      * @param event_id The id for the received event.
      * @param event_data The data for the event, esp_mqtt_event_handle_t.
      */
-    void handleMQTT(void *handler_args, esp_event_base_t base, int32_t event_id, void *event_data);
+    static void handleMQTT(void *handler_args, esp_event_base_t base, int32_t event_id, void *event_data);
 #endif // // IDF CHECK
 
 

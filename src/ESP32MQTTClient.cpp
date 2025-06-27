@@ -300,14 +300,18 @@ void ESP32MQTTClient::printError(esp_mqtt_error_codes_t *error_handle)
 #if ESP_IDF_VERSION < ESP_IDF_VERSION_VAL(5, 0, 0)
 esp_err_t ESP32MQTTClient::handleMQTT(esp_mqtt_event_handle_t event)
 {
-    mqttClient.onEventCallback(event);
+    // Since this is a static function, we need to cast the first argument (void*) back to the class instance type
+    ESP32MQTTClient *instance = (ESP32MQTTClient *)handler_args;
+    instance->onEventCallback(event);
     return ESP_OK;
 }
 #else
 void ESP32MQTTClient::handleMQTT(void *handler_args, esp_event_base_t base, int32_t event_id, void *event_data)
 {
     auto *event = static_cast<esp_mqtt_event_handle_t>(event_data);
-    mqttClient.onEventCallback(event);
+    // Since this is a static function, we need to cast the first argument (void*) back to the class instance type
+    ESP32MQTTClient *instance = (ESP32MQTTClient *)handler_args;
+    instance->onEventCallback(event);
 }
 #endif
 
