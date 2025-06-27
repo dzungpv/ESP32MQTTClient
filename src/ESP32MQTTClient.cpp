@@ -14,7 +14,35 @@ ESP32MQTTClient::ESP32MQTTClient(/* args */)
 
 ESP32MQTTClient::~ESP32MQTTClient()
 {
+    disconnect();
     esp_mqtt_client_destroy(_mqtt_client);
+
+    // Free memory in _buffer and _topic
+    if (_buffer != nullptr)
+    {
+        free(_buffer);
+        _buffer = nullptr; // Set to nullptr to avoid dangling pointers
+    }
+
+    if (_topic != nullptr)
+    {
+        free(_topic);
+        _topic = nullptr; // Set to nullptr to avoid dangling pointers
+    }
+
+    // Free memory in _onMessageUserCallbacks
+    for (auto &callback : _onMessageCallbacks)
+    {
+        if (callback.topic != nullptr)
+        {
+            free(callback.topic); // Free the dynamically allocated topic
+            callback.topic = nullptr;
+        }
+    }
+    _onMessageCallbacks.clear(); // Clear the vector
+    
+    // Free memory in _topicSubscriptionList
+    _topicSubscriptionList.clear();
 }
 
 // =============== Configuration functions, most of them must be called before the first loop() call ==============
@@ -379,10 +407,35 @@ void ESP32MQTTClient::setOnMessageCallback(OnMessageCallback callback)
 
 void ESP32MQTTClient::setOnTopicCallback(const char *topic, int qos, OnMessageCallback callback)
 {
-    OnMessageCallback_t subscription = {strcpy((char *)malloc(strlen(topic) + 1), topic), qos, callback};
-    _onMessageCallbacks.push_back(subscription);
-    if (_mqttConnected)
-        subscribe(topic, qos);
+    if (!topic)
+    {
+        return;
+    }
+    // Add the record to the subscription list and subscribe only if it does not exists.
+    bool found = false;
+    for (std::size_t i = 0; i < _onMessageCallbacks.size() && !found; i++)
+    {
+        if (strcmp(_onMessageCallbacks[i].topic, topic) == 0)
+        {
+            found = true;
+            break;
+        }
+    }
+    if (!found)
+    {
+        char *topicCopy = strdup(topic);
+        if (!topicCopy)
+        {
+            // handle allocation failure (out of memory)
+            return;
+        }
+        OnMessageCallback_t subscription = {topicCopy, qos, callback};
+        _onMessageCallbacks.push_back(subscription);
+        if (isConnected())
+        {
+            subscribe(topic, qos);
+        }
+    }
 }
 
 void ESP32MQTTClient::setOnPublishCallback(OnPublishCallback callback)
@@ -494,7 +547,7 @@ void ESP32MQTTClient::disconnect()
     if (isConnected())
     {
         ESP_LOGI(TAG, "Disconnecting MQTT client.");
-        _mqttClientStop = false;
+        setConnectionState(false);
         esp_mqtt_client_disconnect(_mqtt_client);
 
         // Wait for all disconnect events to be processed
@@ -521,7 +574,7 @@ void ESP32MQTTClient::forceStop()
         ESP_LOGI(TAG, "Forced stop MQTT client.");
     }
     ESP_ERROR_CHECK_WITHOUT_ABORT(esp_mqtt_client_stop(_mqtt_client));
-    _mqttConnected = false;
+    setConnectionState(false);
     ESP_LOGI(TAG, "MQTT client forcefully stopped.");
 }
 
@@ -754,7 +807,7 @@ void ESP32MQTTClient::_onMessage(esp_mqtt_event_handle_t &event)
 
         for (auto callback : _onMessageCallbacks)
         {
-            if (callback.topic == nullptr || mqttTopicMatch(std::string(topic), std::string(callback.topic)))
+            if (callback.topic != nullptr && mqttTopicMatch(std::string(callback.topic), std::string(topic)))
             {
                 callback.callback(event->client, topic, payload, event->retain, event->qos, event->dup);
             }
@@ -788,7 +841,7 @@ void ESP32MQTTClient::_onMessage(esp_mqtt_event_handle_t &event)
 
         for (auto callback : _onMessageCallbacks)
         {
-            if (callback.topic == nullptr || mqttTopicMatch(std::string(_topic), std::string(callback.topic)))
+            if (callback.topic != nullptr && mqttTopicMatch(std::string(callback.topic), std::string(_topic)))
             {
                 callback.callback(event->client, _topic, _buffer, event->retain, event->qos, event->dup);
             }

@@ -11,7 +11,7 @@
 #include "ESP32MQTTClient.h"
 
 #define WIFI_SSID      "ssid"
-#define WIFI_PASS      "passwd"
+#define WIFI_PASS      "password"
 #define MQTT_URI       "mqtt://test.mosquitto.org:1883"
 
 static const char *TAG = "MAIN";
@@ -87,6 +87,7 @@ void onMqttConnect(esp_mqtt_client_handle_t client, bool sessionPresent)
 {
     if (mqttClient.isMyTurn(client))
     {
+        ESP_LOGI(TAG, "onMqttConnect");
         mqttClient.subscribe("foo", [](const std::string &payload)
                              { ESP_LOGI(TAG, "%s: %s", "foo", payload.c_str()); });
 
@@ -99,8 +100,17 @@ void onMqttMessage(esp_mqtt_client_handle_t client, char *topic, char *payload, 
 {
     if (mqttClient.isMyTurn(client))
     {
-        ESP_LOGI(TAG, "Message received: topic: %s qos: %d dup: %d retain: %d", topic, qos, dup, retain);
-         ESP_LOGI(TAG, "Message payload: %s", payload);
+        ESP_LOGI(TAG, "onMqttMessage: Message received: topic: %s qos: %d dup: %d retain: %d", topic, qos, dup, retain);
+        ESP_LOGI(TAG, "onMqttMessage: Message payload: %s", payload);
+    }
+}
+
+void onMqttTopic(esp_mqtt_client_handle_t client, const char *topic, const char *payload, int retain, int qos, bool dup)
+{
+    if (mqttClient.isMyTurn(client))
+    {
+        ESP_LOGI(TAG, "onMqttTopic: Received Topic: %s", topic);
+        ESP_LOGI(TAG, "onMqttTopic: Received Payload: %s", payload);
     }
 }
 
@@ -133,6 +143,8 @@ extern "C" void app_main(void)
     mqttClient.setKeepAlive(30);
     mqttClient.setOnConnectCallback(onMqttConnect);
     mqttClient.setOnMessageCallback(onMqttMessage);
-    
+    mqttClient.setOnTopicCallback("foo", 0, onMqttTopic);
+    mqttClient.setOnTopicCallback("bar/#", 0, onMqttTopic);
+
     xTaskCreate(&main_task, "main_task", 4096, NULL, 5, NULL);
 }

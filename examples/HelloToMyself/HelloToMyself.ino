@@ -3,7 +3,7 @@
 #include "ESP32MQTTClient.h"
 #include "esp_idf_version.h" // check IDF version
 const char *ssid = "ssid";
-const char *pass = "passwd";
+const char *pass = "password";
 
 // Test Mosquitto server, see: https://test.mosquitto.org
 char *server = "mqtt://foo.bar:1883";
@@ -17,6 +17,7 @@ void onMqttConnect(esp_mqtt_client_handle_t client, bool sessionPresent)
 {
     if (mqttClient.isMyTurn(client)) // can be omitted if only one client
     {
+        log_i("onMqttConnect");
         mqttClient.subscribe(subscribeTopic, [](const std::string &payload)
                              { log_i("%s: %s", subscribeTopic, payload.c_str()); });
 
@@ -29,8 +30,17 @@ void onMqttMessage(esp_mqtt_client_handle_t client, char *topic, char *payload, 
 {
     if (mqttClient.isMyTurn(client))
     {
-        ESP_LOGI(TAG, "Message received: topic: %s qos: %d dup: %d retain: %d", topic, qos, dup, retain);
-         ESP_LOGI(TAG, "Message payload: %s", payload);
+        log_i("onMqttMessage: Message received: topic: %s qos: %d dup: %d retain: %d", topic, qos, dup, retain);
+        log_i("onMqttMessage: Message payload: %s", payload);
+    }
+}
+
+void onMqttTopic(esp_mqtt_client_handle_t client, const char *topic, const char *payload, int retain, int qos, bool dup)
+{
+    if (mqttClient.isMyTurn(client))
+    {
+        log_i("onMqttTopic: Received Topic: %s", topic);
+        log_i("onMqttTopic: Received Payload: %s", payload);
     }
 }
 
@@ -48,6 +58,8 @@ void setup()
     mqttClient.setKeepAlive(30);
     mqttClient.setOnConnectCallback(onMqttConnect);
     mqttClient.setOnMessageCallback(onMqttMessage);
+    mqttClient.setOnTopicCallback("foo", 0, onMqttTopic);
+    mqttClient.setOnTopicCallback("bar/#", 0, onMqttTopic);
     WiFi.begin(ssid, pass);
     WiFi.setHostname("c3test");
     mqttClient.loopStart();
