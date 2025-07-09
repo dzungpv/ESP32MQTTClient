@@ -112,7 +112,15 @@ public:
         {
             sprintf(uri, "mqtts://%s:%u", url, port);
         }
-        else
+        else if (port == 8884) // secure web socket
+        {
+            sprintf(uri, "wss://%s:%u", url, port);
+        }
+        else if (port == 1884) // web socket
+        {
+            sprintf(uri, "ws://%s:%u", url, port);
+        }
+        else if (port == 1883)
         {
             sprintf(uri, "mqtt://%s:%u", url, port);
         }
