@@ -98,32 +98,44 @@ public:
     bool unsubscribe(const std::string &topic);                                       // Unsubscribes from the topic, if it exists, and removes it from the CallbackList.
     void setKeepAlive(uint16_t keepAliveSeconds);                                // Change the keepalive interval (15 seconds by default)
     inline void setMqttClientName(const char *name) { _mqttClientName = name; }; // Allow to set client name manually (must be done in setup(), else it will not work.)
+
+    /** Set mqtt uri include procotol and port **/
     inline void setURI(const char *uri, const char *username = "", const char *password = "")
-    { // Allow setting the MQTT info manually (must be done in setup())
+    { 
         _mqttUri = uri;
         _mqttUsername = username;
         _mqttPassword = password;
     };
 
+    /** Set mqtt url in raw string and lib will generate uri base on port **/
     inline void setURL(const char *url, const uint16_t port, const char *username = "", const char *password = "")
-    { // Allow setting the MQTT info manually (must be done in setup())
+    { 
         char *uri = (char *)malloc(200);
-        if (port == 8883)
+        // Determine the URI scheme based on the port, then build the URI in one call
+        const char *scheme = nullptr;
+        switch (port)
         {
-            sprintf(uri, "mqtts://%s:%u", url, port);
+        case 8883:
+            scheme = "mqtts";
+            break;
+        case 1883:
+            scheme = "mqtt";
+            break;
+        case 443:
+        case 8884:
+            scheme = "wss";
+            break;
+        case 80:
+        case 1884:
+            scheme = "ws";
+            break;
+        default:
+            // Fallback for unexpected ports
+            scheme = "mqtt";
+            break;
         }
-        else if (port == 8884) // secure web socket
-        {
-            sprintf(uri, "wss://%s:%u", url, port);
-        }
-        else if (port == 1884) // web socket
-        {
-            sprintf(uri, "ws://%s:%u", url, port);
-        }
-        else if (port == 1883)
-        {
-            sprintf(uri, "mqtt://%s:%u", url, port);
-        }
+        // Use snprintf for safety; assume uri points to a buffer of size uri_len
+        snprintf(uri, 200, "%s://%s:%u", scheme, url, port);
         if (_enableSerialLogs)
         {
             ESP_LOGI("ESP32MQTTClient", "MQTT uri %s", uri);
