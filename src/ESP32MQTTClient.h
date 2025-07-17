@@ -7,6 +7,8 @@
 #include "esp_log.h"         
 #include "esp_idf_version.h" // check IDF version
 
+#define MAX_LEN_MQTT_URI 200
+
 typedef std::function<void(const std::string &message)> MessageReceivedCallback;
 typedef std::function<void(const std::string &topicStr, const std::string &message)> MessageReceivedCallbackWithTopic;
 
@@ -250,24 +252,43 @@ public:
      */
     inline void setMqttClientName(const char *mqttClientName) { _mqttClientName = mqttClientName; };
 
+    /** Set mqtt uri include procotol and port **/
     inline void setURI(const char *uri, const char *username = "", const char *password = "")
-    { // Allow setting the MQTT info manually (must be done in setup())
+    {
         _mqttUri = uri;
         _mqttUsername = username;
         _mqttPassword = password;
     };
 
+    /** Set mqtt url in raw string and lib will generate uri base on port **/
     inline void setURL(const char *url, const uint16_t port, const char *username = "", const char *password = "")
-    { // Allow setting the MQTT info manually (must be done in setup())
-        char *uri = (char *)malloc(200);
-        if (port == 8883)
+    { 
+        char *uri = (char *)malloc(MAX_LEN_MQTT_URI);
+        // Determine the URI scheme based on the port, then build the URI in one call
+        const char *scheme = nullptr;
+        switch (port)
         {
-            sprintf(uri, "mqtts://%s:%u", url, port);
+        case 8883:
+            scheme = "mqtts";
+            break;
+        case 1883:
+            scheme = "mqtt";
+            break;
+        case 443:
+        case 8884:
+            scheme = "wss";
+            break;
+        case 80:
+        case 1884:
+            scheme = "ws";
+            break;
+        default:
+            // Fallback for unexpected ports
+            scheme = "mqtt";
+            break;
         }
-        else
-        {
-            sprintf(uri, "mqtt://%s:%u", url, port);
-        }
+        // Use snprintf for safety; assume uri points to a buffer of size uri_len
+        snprintf(uri, MAX_LEN_MQTT_URI, "%s://%s:%u", scheme, url, port);
         if (_enableSerialLogs)
         {
             ESP_LOGI("ESP32MQTTClient", "MQTT uri %s", uri);

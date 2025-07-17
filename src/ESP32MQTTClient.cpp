@@ -213,19 +213,22 @@ int ESP32MQTTClient::subscribe(const char *topic, int qos)
 {
     if (isConnected())
     {
-        ESP_LOGI(TAG, "Subscribing to topic %s with QoS %d", topic, qos);
+        if (_enableSerialLogs)
+            ESP_LOGI(TAG, "Subscribing to topic %s with QoS %d", topic, qos);
         return esp_mqtt_client_subscribe(_mqtt_client, topic, qos);
     }
     else
     {
-        ESP_LOGW(TAG, "MQTT client not connected. Dropping subscription to topic %s with QoS %d.", topic, qos);
+        if (_enableSerialLogs)
+            ESP_LOGW(TAG, "MQTT client not connected. Dropping subscription to topic %s with QoS %d.", topic, qos);
         return -1;
     }
 }
 
 int ESP32MQTTClient::unsubscribe(const char *topic)
 {
-    ESP_LOGI(TAG, "Unsubscribing from topic %s", topic);
+    if (_enableSerialLogs)
+        ESP_LOGI(TAG, "Unsubscribing from topic %s", topic);
     return esp_mqtt_client_unsubscribe(_mqtt_client, topic);
 }
 
@@ -235,18 +238,21 @@ int ESP32MQTTClient::publish(const char *topic, const char *payload, int length,
     // drop message if not connected and QoS is 0
     if (!isConnected() && qos == 0)
     {
-        ESP_LOGW(TAG, "MQTT client not connected. Dropping message with QoS = 0.");
+        if (_enableSerialLogs)
+            ESP_LOGW(TAG, "MQTT client not connected. Dropping message with QoS = 0.");
         return -1;
     }
 
     if (async)
     {
-        ESP_LOGV(TAG, "Enqueuing message to topic %s with QoS %d", topic, qos);
+        if (_enableSerialLogs)
+            ESP_LOGV(TAG, "Enqueuing message to topic %s with QoS %d", topic, qos);
         return esp_mqtt_client_enqueue(_mqtt_client, topic, payload, length, qos, retain, true);
     }
     else
     {
-        ESP_LOGV(TAG, "Publishing message to topic %s with QoS %d", topic, qos);
+        if (_enableSerialLogs)
+            ESP_LOGV(TAG, "Publishing message to topic %s with QoS %d", topic, qos);
         return esp_mqtt_client_publish(_mqtt_client, topic, payload, length, qos, retain);
     }
 }
@@ -527,10 +533,7 @@ bool ESP32MQTTClient::loopStart()
         if (success)
             ESP_LOGI(TAG, "Connection ok. (%lus)", (unsigned long)(esp_timer_get_time() / 1000000));
         else
-        {
-
             ESP_LOGE(TAG, "Connection failed, error code: %d", err);
-        }
     }
 
     return success;
@@ -540,13 +543,15 @@ void ESP32MQTTClient::disconnect()
 {
     if (_mqtt_client == nullptr)
     {
-        ESP_LOGW(TAG, "MQTT client not started.");
+        if (_enableSerialLogs)
+            ESP_LOGW(TAG, "MQTT client not started.");
         return;
     }
 
     if (isConnected())
     {
-        ESP_LOGI(TAG, "Disconnecting MQTT client.");
+        if (_enableSerialLogs)
+            ESP_LOGI(TAG, "Disconnecting MQTT client.");
         setConnectionState(false);
         esp_mqtt_client_disconnect(_mqtt_client);
 
@@ -558,24 +563,28 @@ void ESP32MQTTClient::disconnect()
     }
 
     esp_mqtt_client_stop(_mqtt_client);
-    ESP_LOGI(TAG, "MQTT client stopped.");
+    if (_enableSerialLogs)
+        ESP_LOGI(TAG, "MQTT client stopped.");
 }
 
 void ESP32MQTTClient::forceStop()
 {
     if (_mqtt_client == nullptr)
     {
-        ESP_LOGW(TAG, "MQTT client not started.");
+        if (_enableSerialLogs)
+            ESP_LOGW(TAG, "MQTT client not started.");
         return;
     }
 
     if (isConnected())
     {
-        ESP_LOGI(TAG, "Forced stop MQTT client.");
+        if (_enableSerialLogs)
+            ESP_LOGI(TAG, "Forced stop MQTT client.");
     }
     ESP_ERROR_CHECK_WITHOUT_ABORT(esp_mqtt_client_stop(_mqtt_client));
     setConnectionState(false);
-    ESP_LOGI(TAG, "MQTT client forcefully stopped.");
+    if (_enableSerialLogs)
+        ESP_LOGI(TAG, "MQTT client forcefully stopped.");
 }
 
 /**
@@ -706,7 +715,6 @@ void ESP32MQTTClient::onEventCallback(esp_mqtt_event_handle_t event)
         }
         case MQTT_EVENT_DISCONNECTED:
         {
-            ESP_LOGI("ESP32MQTTClient", "MQTT_EVENT_DISCONNECTED");
             setConnectionState(false);
             _onDisconnect(event);
             if (_enableSerialLogs)
@@ -715,8 +723,10 @@ void ESP32MQTTClient::onEventCallback(esp_mqtt_event_handle_t event)
         }
         case MQTT_EVENT_ERROR:
         {
-            ESP_LOGI("ESP32MQTTClient", "MQTT_EVENT_ERROR");
-            printError(event->error_handle);
+            if (_enableSerialLogs)
+            {
+                printError(event->error_handle);
+            }
             setConnectionState(false);
             _onError(event);
             break;
@@ -733,7 +743,8 @@ void ESP32MQTTClient::onEventCallback(esp_mqtt_event_handle_t event)
 
 void ESP32MQTTClient::_onConnect(esp_mqtt_event_handle_t &event)
 {
-    ESP_LOGI(TAG, "MQTT_EVENT_CONNECTED");
+    if (_enableSerialLogs)
+        ESP_LOGI(TAG, "MQTT_EVENT_CONNECTED");
 
     // Resubscribe to all topics
     for (auto topic : _onMessageCallbacks)
@@ -750,7 +761,8 @@ void ESP32MQTTClient::_onConnect(esp_mqtt_event_handle_t &event)
 
 void ESP32MQTTClient::_onDisconnect(esp_mqtt_event_handle_t &event)
 {
-    ESP_LOGI(TAG, "MQTT_EVENT_DISCONNECTED");
+    if (_enableSerialLogs)
+        ESP_LOGI(TAG, "MQTT_EVENT_DISCONNECTED");
     for (auto callback : _onDisconnectCallbacks)
     {
         callback(event->client, event->session_present);
@@ -760,7 +772,8 @@ void ESP32MQTTClient::_onDisconnect(esp_mqtt_event_handle_t &event)
 
 void ESP32MQTTClient::_onSubscribe(esp_mqtt_event_handle_t &event)
 {
-    ESP_LOGI(TAG, "MQTT_EVENT_SUBSCRIBED, msg_id=%d", event->msg_id);
+    if (_enableSerialLogs)
+        ESP_LOGI(TAG, "MQTT_EVENT_SUBSCRIBED, msg_id=%d", event->msg_id);
     for (auto callback : _onSubscribeCallbacks)
     {
         callback(event->client, event->msg_id);
@@ -769,7 +782,8 @@ void ESP32MQTTClient::_onSubscribe(esp_mqtt_event_handle_t &event)
 
 void ESP32MQTTClient::_onUnsubscribe(esp_mqtt_event_handle_t &event)
 {
-    ESP_LOGI(TAG, "MQTT_EVENT_UNSUBSCRIBED, msg_id=%d", event->msg_id);
+    if (_enableSerialLogs)
+        ESP_LOGI(TAG, "MQTT_EVENT_UNSUBSCRIBED, msg_id=%d", event->msg_id);
     for (auto callback : _onUnsubscribeCallbacks)
     {
         callback(event->client, event->msg_id);
@@ -793,17 +807,20 @@ void ESP32MQTTClient::_onMessage(esp_mqtt_event_handle_t &event)
     // Check if we are dealing with a simple message
     if (event->total_data_len == event->data_len)
     {
-        ESP_LOGV(TAG, "MQTT_EVENT_DATA_SINGLE");
+        if (_enableSerialLogs)
+            ESP_LOGV(TAG, "MQTT_EVENT_DATA_SINGLE");
         // Copy the characters from data->data_ptr to c-string
         char payload[event->data_len + 1];
         strncpy(payload, (char *)event->data, event->data_len);
         payload[event->data_len] = '\0';
-        ESP_LOGV(TAG, "Payload=%s", payload);
+        if (_enableSerialLogs)
+            ESP_LOGV(TAG, "Payload=%s", payload);
 
         char topic[event->topic_len + 1];
         strncpy(topic, (char *)event->topic, event->topic_len);
         topic[event->topic_len] = '\0';
-        ESP_LOGV(TAG, "Topic=%s", topic);
+        if (_enableSerialLogs)
+            ESP_LOGV(TAG, "Topic=%s", topic);
 
         for (auto callback : _onMessageCallbacks)
         {
@@ -817,7 +834,8 @@ void ESP32MQTTClient::_onMessage(esp_mqtt_event_handle_t &event)
     // Check if we are dealing with a first multipart message
     else if (event->current_data_offset == 0)
     {
-        ESP_LOGV(TAG, "MQTT_EVENT_DATA_MULTIPART_FIRST");
+        if (_enableSerialLogs)
+            ESP_LOGV(TAG, "MQTT_EVENT_DATA_MULTIPART_FIRST");
         // Allocate memory for the buffer
         _buffer = (char *)malloc(event->total_data_len + 1);
         // Copy the characters from even->data to _buffer
@@ -832,12 +850,13 @@ void ESP32MQTTClient::_onMessage(esp_mqtt_event_handle_t &event)
     // Check if we are on the last message
     else if (event->current_data_offset + event->data_len == event->total_data_len)
     {
-        ESP_LOGV(TAG, "MQTT_EVENT_DATA_MULTIPART_LAST");
+        if (_enableSerialLogs)
+            ESP_LOGV(TAG, "MQTT_EVENT_DATA_MULTIPART_LAST");
         // Copy the characters from even->data to _buffer
         strncpy(_buffer + event->current_data_offset, (char *)event->data, event->data_len);
         _buffer[event->total_data_len] = '\0';
-        ESP_LOGV(TAG, "Topic=%s", _topic);
-        ESP_LOGV(TAG, "Payload=%s", _buffer);
+        if (_enableSerialLogs)
+            ESP_LOGV(TAG, "Topic=%s, Payload=%s", _topic, _buffer);
 
         for (auto callback : _onMessageCallbacks)
         {
@@ -859,30 +878,41 @@ void ESP32MQTTClient::_onMessage(esp_mqtt_event_handle_t &event)
     {
         // copy the characters from even->data to _buffer
         strncpy(_buffer + event->current_data_offset, (char *)event->data, event->data_len);
-        ESP_LOGV(TAG, "MQTT_EVENT_DATA_MULTIPART");
+        if (_enableSerialLogs)
+            ESP_LOGV(TAG, "MQTT_EVENT_DATA_MULTIPART");
     }
 }
 
 void ESP32MQTTClient::_onPublish(esp_mqtt_event_handle_t &event)
 {
-    ESP_LOGI(TAG, "MQTT_EVENT_PUBLISHED, msg_id=%d", event->msg_id);
+    if (_enableSerialLogs)
+        ESP_LOGI(TAG, "MQTT_EVENT_PUBLISHED, msg_id=%d", event->msg_id);
     for (auto callback : _onPublishCallbacks)
     {
         callback(event->client, event->msg_id);
     }
 }
 
+static void logErrorIfNonZero(const char *message, int error_code)
+{
+    if (error_code != 0)
+    {
+        ESP_LOGE(TAG, "Last error %s: 0x%x", message, error_code);
+    }
+}
+
 void ESP32MQTTClient::_onError(esp_mqtt_event_handle_t &event)
 {
-    ESP_LOGI(TAG, "MQTT_EVENT_ERROR");
+    if (_enableSerialLogs)
+        ESP_LOGE(TAG, "MQTT_EVENT_ERROR");
     if (event->error_handle->error_type == MQTT_ERROR_TYPE_TCP_TRANSPORT)
     {
-        /*
-        log_error_if_nonzero("reported from esp-tls", event->error_handle->esp_tls_last_esp_err);
-        log_error_if_nonzero("reported from tls stack", event->error_handle->esp_tls_stack_err);
-        log_error_if_nonzero("captured as transport's socket errno", event->error_handle->esp_transport_sock_errno);
-        */
-        ESP_LOGI(TAG, "Last errno string (%s)", strerror(event->error_handle->esp_transport_sock_errno));
+        if (_enableSerialLogs){
+            logErrorIfNonZero("reported from esp-tls", event->error_handle->esp_tls_last_esp_err);
+            logErrorIfNonZero("reported from tls stack", event->error_handle->esp_tls_stack_err);
+            logErrorIfNonZero("captured as transport's socket errno", event->error_handle->esp_transport_sock_errno);
+            // ESP_LOGI(TAG, "Last errno string (%s)", strerror(event->error_handle->esp_transport_sock_errno));
+        }
 
         for (auto callback : _onErrorCallbacks)
         {
