@@ -248,14 +248,146 @@ mqttClient.setOnTopicCallback("home/+/temperature", 1,
     });
 ```
 
-## Building the ESP-IDF Example
+## Building Examples
 
-The library includes a native ESP-IDF example in the `examples/CppEspIdf` directory. To build it:
+### Building the Arduino Example
 
-1.  **Set up ESP-IDF:** Ensure you have the ESP-IDF environment installed and configured.
-2.  **Configure Wi-Fi:** Open `examples/CppEspIdf/main/main.cpp` and set your Wi-Fi SSID and password.
-3.  **Build the project:**
-    ```bash
-    cd examples/CppEspIdf
-    idf.py build
-    ```
+The library includes an Arduino example in the `examples/HelloToMyself` directory that demonstrates basic MQTT functionality.
+
+#### Prerequisites
+1. **Arduino IDE**: Install Arduino IDE 2.x or later
+2. **ESP32 Board Package**: Install the ESP32 board package (arduino-esp32 v2/v3+)
+3. **Library Installation**: Install this library via Arduino Library Manager or by copying the library to your Arduino libraries folder
+
+#### Configuration
+1. **Open the example**: Open `examples/HelloToMyself/HelloToMyself.ino` in Arduino IDE
+2. **Configure Wi-Fi**: Update the Wi-Fi credentials in the sketch:
+   ```cpp
+   const char *ssid = "your_wifi_ssid";
+   const char *pass = "your_wifi_password";
+   ```
+3. **Configure MQTT Broker**: Update the MQTT broker settings:
+   ```cpp
+   char *server = "mqtt://your_broker_address:1883";
+   char *subscribeTopic = "your_subscribe_topic";
+   char *publishTopic = "your_publish_topic";
+   ```
+
+#### Building and Uploading
+1. **Select Board**: Choose your ESP32 board from Tools > Board menu
+2. **Select Port**: Choose the correct COM port for your ESP32
+3. **Compile**: Click the Verify button to compile the sketch
+4. **Upload**: Click the Upload button to flash the sketch to your ESP32
+
+#### Example Features
+The HelloToMyself example demonstrates:
+- Basic MQTT connection setup
+- Last will and testament configuration
+- Topic subscription with lambda callbacks
+- Message publishing with counter
+- Global message callback handling
+- Topic-specific callbacks with wildcard support
+
+### Building the ESP-IDF Example
+
+The library includes a native ESP-IDF example in the `examples/CppEspIdf` directory that demonstrates MQTT functionality in a pure ESP-IDF environment.
+
+#### Prerequisites
+1. **ESP-IDF Environment**: Install ESP-IDF v4.x or v5.x and set up the development environment
+   ```bash
+   # For ESP-IDF v5.x
+   . $HOME/esp/esp-idf/export.sh
+   
+   # For ESP-IDF v4.x
+   . $HOME/esp/esp-idf/export.sh
+   ```
+2. **ESP-IDF Tools**: Ensure you have the required tools installed (CMake, Ninja, etc.)
+3. **Library Integration**: The example includes the library as a local component
+
+#### Project Structure
+```
+examples/CppEspIdf/
+├── CMakeLists.txt              # Main project CMake file
+├── sdkconfig                   # ESP-IDF configuration
+├── main/
+│   ├── CMakeLists.txt          # Main component CMake file
+│   └── main.cpp                # Main application code
+└── components/
+    └── ESP32MQTTClient/
+        └── CMakeLists.txt      # Library component CMake file
+```
+
+#### Configuration
+1. **Navigate to the example directory**:
+   ```bash
+   cd examples/CppEspIdf
+   ```
+
+2. **Configure Wi-Fi settings**: Open `main/main.cpp` and update the Wi-Fi credentials:
+   ```cpp
+   #define WIFI_SSID      "your_wifi_ssid"
+   #define WIFI_PASS      "your_wifi_password"
+   ```
+
+3. **Configure MQTT broker**: Update the MQTT broker URI:
+   ```cpp
+   #define MQTT_URI       "mqtt://your_broker_address:1883"
+   ```
+
+4. **Optional: Configure ESP-IDF settings**:
+   ```bash
+   idf.py menuconfig
+   ```
+   - Navigate to "Component config" > "MQTT Configuration" to adjust MQTT settings
+   - Navigate to "Component config" > "WiFi" to configure WiFi settings
+
+#### Building and Flashing
+1. **Build the project**:
+   ```bash
+   idf.py build
+   ```
+
+2. **Flash to your ESP32** (replace `PORT` with your device port):
+   ```bash
+   idf.py -p /dev/ttyUSB0 flash
+   # or on Windows:
+   idf.py -p COM3 flash
+   ```
+
+3. **Monitor the output**:
+   ```bash
+   idf.py monitor
+   ```
+
+4. **Build, flash, and monitor in one command**:
+   ```bash
+   idf.py -p /dev/ttyUSB0 flash monitor
+   ```
+
+#### Example Features
+The CppEspIdf example demonstrates:
+- **Wi-Fi Connection**: Automatic Wi-Fi connection with event handling
+- **MQTT Client Setup**: Complete MQTT client configuration with callbacks
+- **Last Will and Testament**: Configures offline notification
+- **Topic Subscriptions**: 
+  - Direct topic subscription (`foo`)
+  - Wildcard topic subscription (`bar/#`)
+- **Message Publishing**: Periodic message publishing with counter
+- **Callback Handling**:
+  - Connection callback (`onMqttConnect`)
+  - Global message callback (`onMqttMessage`)
+  - Topic-specific callbacks (`onMqttTopic`)
+- **Multi-threading**: Uses FreeRTOS tasks for background publishing
+
+#### Testing the Example
+1. **Connect to Wi-Fi**: The device will automatically connect to the configured Wi-Fi network
+2. **MQTT Connection**: Once connected to Wi-Fi, the MQTT client will connect to the broker
+3. **Message Publishing**: The device publishes messages to `bar/bar` topic every 2 seconds
+4. **Message Reception**: Subscribe to `foo` or `bar/#` topics to receive messages
+5. **Monitor Output**: Use `idf.py monitor` to see connection status and message logs
+
+#### Troubleshooting
+- **Wi-Fi Connection Issues**: Check SSID and password in `main.cpp`
+- **MQTT Connection Issues**: Verify broker address and port in `MQTT_URI`
+- **Build Errors**: Ensure ESP-IDF environment is properly set up
+- **Flash Issues**: Check device port and ensure ESP32 is in download mode
