@@ -1,8 +1,16 @@
 #include "ESP32MQTTClient.h"
 #include "esp_timer.h"
 
+/**
+ * @brief Tag used for ESP logging throughout the ESP32MQTTClient implementation.
+ */
 static const char *TAG = "ESP32MQTTClient";
 
+/**
+ * @brief Constructs a new ESP32MQTTClient object with default settings.
+ *
+ * Initializes connection state, packet sizes, and disables last will by default.
+ */
 ESP32MQTTClient::ESP32MQTTClient(/* args */)
 {
     _mqttConnected = false;
@@ -12,6 +20,11 @@ ESP32MQTTClient::ESP32MQTTClient(/* args */)
     _mqttLastWillMessage = nullptr;
 }
 
+/**
+ * @brief Destructor for ESP32MQTTClient.
+ *
+ * Cleans up MQTT client, disconnects, and frees all allocated resources.
+ */
 ESP32MQTTClient::~ESP32MQTTClient()
 {
     disconnect();
@@ -47,16 +60,33 @@ ESP32MQTTClient::~ESP32MQTTClient()
 
 // =============== Configuration functions, most of them must be called before the first loop() call ==============
 
+/**
+ * @brief Enables or disables serial debugging messages.
+ *
+ * @param enabled Set to true to enable serial logs, false to disable.
+ */
 void ESP32MQTTClient::enableDebuggingMessages(const bool enabled)
 {
     _enableSerialLogs = enabled;
 }
 
+/**
+ * @brief Disables MQTT session persistence (clean session).
+ *
+ * Should be called before the first loopStart().
+ */
 void ESP32MQTTClient::disablePersistence()
 {
     _disableMQTTCleanSession = 1;
 }
 
+/**
+ * @brief Sets the MQTT last will message and topic.
+ *
+ * @param topic   The topic for the last will message.
+ * @param message The message to send as last will.
+ * @param retain  Whether the last will message should be retained.
+ */
 void ESP32MQTTClient::enableLastWillMessage(const char *topic, const char *message, const bool retain)
 {
     _mqttLastWillTopic = (char *)topic;
@@ -64,6 +94,9 @@ void ESP32MQTTClient::enableLastWillMessage(const char *topic, const char *messa
     _mqttLastWillRetain = retain;
 }
 
+/**
+ * @brief Disables automatic reconnection to the MQTT broker.
+ */
 void ESP32MQTTClient::disableAutoReconnect()
 {
 #if ESP_IDF_VERSION < ESP_IDF_VERSION_VAL(5, 0, 0)
@@ -73,6 +106,11 @@ void ESP32MQTTClient::disableAutoReconnect()
 #endif // IDF CHECK
 }
 
+/**
+ * @brief Sets the priority of the MQTT client task.
+ *
+ * @param prio The priority value to set.
+ */
 void ESP32MQTTClient::setTaskPrio(int prio)
 {
 #if ESP_IDF_VERSION < ESP_IDF_VERSION_VAL(5, 0, 0)
@@ -82,6 +120,11 @@ void ESP32MQTTClient::setTaskPrio(int prio)
 #endif // IDF CHECK
 }
 
+/**
+ * @brief Sets the client certificate for TLS/SSL connections.
+ *
+ * @param clientCert PEM-encoded client certificate string.
+ */
 void ESP32MQTTClient::setClientCert(const char *clientCert)
 {
 #if ESP_IDF_VERSION < ESP_IDF_VERSION_VAL(5, 0, 0)
@@ -91,6 +134,11 @@ void ESP32MQTTClient::setClientCert(const char *clientCert)
 #endif // IDF CHECK
 }
 
+/**
+ * @brief Sets the CA certificate for TLS/SSL connections.
+ *
+ * @param caCert PEM-encoded CA certificate string.
+ */
 void ESP32MQTTClient::setCaCert(const char *caCert)
 {
 #if ESP_IDF_VERSION < ESP_IDF_VERSION_VAL(5, 0, 0)
@@ -100,6 +148,11 @@ void ESP32MQTTClient::setCaCert(const char *caCert)
 #endif // IDF CHECK
 }
 
+/**
+ * @brief Sets the client private key for TLS/SSL connections.
+ *
+ * @param clientKey PEM-encoded client private key string.
+ */
 void ESP32MQTTClient::setKey(const char *clientKey)
 {
 #if ESP_IDF_VERSION < ESP_IDF_VERSION_VAL(5, 0, 0)
@@ -110,11 +163,21 @@ void ESP32MQTTClient::setKey(const char *clientKey)
 }
 // =============== Public functions for interaction with this lib =================
 
+/**
+ * @brief Sets the connection state of the MQTT client.
+ *
+ * @param state The new connection state.
+ */
 void ESP32MQTTClient::setConnectionState(bool state)
 {
     _mqttConnected = state;
 }
 
+/**
+ * @brief Enables or disables automatic reconnection to the MQTT broker.
+ *
+ * @param choice Set to true to enable auto-reconnect, false to disable.
+ */
 void ESP32MQTTClient::setAutoReconnect(bool choice)
 {
 #if ESP_IDF_VERSION < ESP_IDF_VERSION_VAL(5, 0, 0)
@@ -124,6 +187,12 @@ void ESP32MQTTClient::setAutoReconnect(bool choice)
 #endif // IDF CHECK
 }
 
+/**
+ * @brief Sets the maximum outgoing packet size for the MQTT client.
+ *
+ * @param size The new maximum outgoing packet size.
+ * @return true if the size was set successfully, false otherwise.
+ */
 bool ESP32MQTTClient::setMaxOutPacketSize(const uint16_t size)
 {
 
@@ -131,6 +200,12 @@ bool ESP32MQTTClient::setMaxOutPacketSize(const uint16_t size)
     return true;
 }
 
+/**
+ * @brief Sets the maximum packet size for both incoming and outgoing messages.
+ *
+ * @param size The new maximum packet size.
+ * @return true if the size was set successfully, false otherwise.
+ */
 bool ESP32MQTTClient::setMaxPacketSize(const uint16_t size)
 {
     _mqttMaxInPacketSize = size;
@@ -139,6 +214,15 @@ bool ESP32MQTTClient::setMaxPacketSize(const uint16_t size)
     return true;
 }
 
+/**
+ * @brief Publishes a message to the MQTT broker.
+ *
+ * @param topic The topic to publish to.
+ * @param payload The payload of the message.
+ * @param qos The Quality of Service level (0, 1, or 2).
+ * @param retain Whether the message should be retained.
+ * @return true if the message was published successfully, false otherwise.
+ */
 bool ESP32MQTTClient::publish(const std::string &topic, const std::string &payload, int qos, bool retain)
 {
     // Do not try to publish if MQTT is not connected.
@@ -167,6 +251,14 @@ bool ESP32MQTTClient::publish(const std::string &topic, const std::string &paylo
     return success;
 }
 
+/**
+ * @brief Subscribes to a topic.
+ *
+ * @param topic The topic to subscribe to.
+ * @param messageReceivedCallback The callback function to call when a message is received.
+ * @param qos The Quality of Service level (0, 1, or 2).
+ * @return true if the subscription was successful, false otherwise.
+ */
 bool ESP32MQTTClient::subscribe(const std::string &topic, MessageReceivedCallback messageReceivedCallback, uint8_t qos)
 {
     bool success = false;
@@ -197,6 +289,14 @@ bool ESP32MQTTClient::subscribe(const std::string &topic, MessageReceivedCallbac
     return success;
 }
 
+/**
+ * @brief Subscribes to a topic with a callback that also provides the topic.
+ *
+ * @param topic The topic to subscribe to.
+ * @param messageReceivedCallbackWithTopic The callback function to call when a message is received, including the topic.
+ * @param qos The Quality of Service level (0, 1, or 2).
+ * @return true if the subscription was successful, false otherwise.
+ */
 bool ESP32MQTTClient::subscribe(const std::string &topic, MessageReceivedCallbackWithTopic messageReceivedCallbackWithTopic, uint8_t qos)
 {
 
@@ -210,6 +310,13 @@ bool ESP32MQTTClient::subscribe(const std::string &topic, MessageReceivedCallbac
     return false;
 }
 
+/**
+ * @brief Subscribes to a topic.
+ *
+ * @param topic The topic to subscribe to.
+ * @param qos The Quality of Service level (0, 1, or 2).
+ * @return The message ID of the subscription, or -1 if subscription failed.
+ */
 int ESP32MQTTClient::subscribe(const char *topic, int qos)
 {
     if (isConnected())
@@ -226,6 +333,12 @@ int ESP32MQTTClient::subscribe(const char *topic, int qos)
     }
 }
 
+/**
+ * @brief Unsubscribes from a topic.
+ *
+ * @param topic The topic to unsubscribe from.
+ * @return The message ID of the unsubscribe, or -1 if unsubscribe failed.
+ */
 int ESP32MQTTClient::unsubscribe(const char *topic)
 {
     if (_enableSerialLogs)
@@ -234,6 +347,17 @@ int ESP32MQTTClient::unsubscribe(const char *topic)
 }
 
 
+/**
+ * @brief Publishes a message to the MQTT broker.
+ *
+ * @param topic The topic to publish to.
+ * @param qos The Quality of Service level (0, 1, or 2).
+ * @param retain Whether the message should be retained.
+ * @param payload The payload of the message.
+ * @param length The length of the payload.
+ * @param async Whether the publish should be asynchronous (enqueued).
+ * @return The message ID of the published message, or -1 if publish failed.
+ */
 int ESP32MQTTClient::publish(const char *topic, int qos, bool retain, const char *payload, int length, bool async)
 {
     // drop message if not connected and QoS is 0
@@ -258,6 +382,12 @@ int ESP32MQTTClient::publish(const char *topic, int qos, bool retain, const char
     }
 }
 
+/**
+ * @brief Unsubscribes from a topic.
+ *
+ * @param topic The topic to unsubscribe from.
+ * @return true if the unsubscribe was successful, false otherwise.
+ */
 bool ESP32MQTTClient::unsubscribe(const std::string &topic)
 {
 
@@ -295,6 +425,11 @@ bool ESP32MQTTClient::unsubscribe(const std::string &topic)
     return true;
 }
 
+/**
+ * @brief Sets the keep-alive interval for the MQTT client.
+ *
+ * @param keepAliveSeconds The keep-alive interval in seconds.
+ */
 void ESP32MQTTClient::setKeepAlive(uint16_t keepAliveSeconds)
 {
 #if ESP_IDF_VERSION < ESP_IDF_VERSION_VAL(5, 0, 0)
@@ -306,6 +441,11 @@ void ESP32MQTTClient::setKeepAlive(uint16_t keepAliveSeconds)
 
 // ================== Private functions ====================-
 
+/**
+ * @brief Prints the error details from an MQTT error handle.
+ *
+ * @param error_handle The error handle containing error details.
+ */
 void ESP32MQTTClient::printError(esp_mqtt_error_codes_t *error_handle)
 {
     switch (error_handle->error_type)
@@ -369,6 +509,15 @@ void ESP32MQTTClient::printError(esp_mqtt_error_codes_t *error_handle)
 }
 
 #if ESP_IDF_VERSION < ESP_IDF_VERSION_VAL(5, 0, 0)
+/**
+ * @brief Handles MQTT events for the static handleMQTT function.
+ *
+ * This function is registered as the event handler for the MQTT client.
+ * It casts the user_context back to the ESP32MQTTClient instance and calls onEventCallback.
+ *
+ * @param event The MQTT event handle.
+ * @return ESP_OK on success.
+ */
 esp_err_t ESP32MQTTClient::handleMQTT(esp_mqtt_event_handle_t event)
 {
     // Since this is a static function, we need to cast the first argument (void*) back to the class instance type
@@ -377,6 +526,17 @@ esp_err_t ESP32MQTTClient::handleMQTT(esp_mqtt_event_handle_t event)
     return ESP_OK;
 }
 #else
+/**
+ * @brief Handles MQTT events for the static handleMQTT function.
+ *
+ * This function is registered as the event handler for the MQTT client.
+ * It casts the user_context back to the ESP32MQTTClient instance and calls onEventCallback.
+ *
+ * @param handler_args The user_context passed to esp_mqtt_client_register_event.
+ * @param base The event base.
+ * @param event_id The event ID.
+ * @param event_data The event data (esp_mqtt_event_handle_t).
+ */
 void ESP32MQTTClient::handleMQTT(void *handler_args, esp_event_base_t base, int32_t event_id, void *event_data)
 {
     auto *event = static_cast<esp_mqtt_event_handle_t>(event_data);
@@ -386,32 +546,64 @@ void ESP32MQTTClient::handleMQTT(void *handler_args, esp_event_base_t base, int3
 }
 #endif
 
+/**
+ * @brief Adds a callback for when the MQTT client connects.
+ *
+ * @param callback The callback function to add.
+ */
 void ESP32MQTTClient::setOnConnectCallback(OnConnectCallback callback)
 {
     _onConnectCallbacks.push_back(callback);
 }
 
+/**
+ * @brief Adds a callback for when the MQTT client disconnects.
+ *
+ * @param callback The callback function to add.
+ */
 void ESP32MQTTClient::setOnDisonnectCallback(OnDisconnectCallback callback)
 {
     _onDisconnectCallbacks.push_back(callback);
 }
 
+/**
+ * @brief Adds a callback for when the MQTT client subscribes.
+ *
+ * @param callback The callback function to add.
+ */
 void ESP32MQTTClient::setOnSubscribeCallback(OnSubscribeCallback callback)
 {
     _onSubscribeCallbacks.push_back(callback);
 }
 
+/**
+ * @brief Adds a callback for when the MQTT client unsubscribes.
+ *
+ * @param callback The callback function to add.
+ */
 void ESP32MQTTClient::setOnUnsubscribeCallback(OnUnsubscribeCallback callback)
 {
     _onUnsubscribeCallbacks.push_back(callback);
 }
 
+/**
+ * @brief Adds a callback for when a message is received.
+ *
+ * @param callback The callback function to add.
+ */
 void ESP32MQTTClient::setOnMessageCallback(OnMessageCallback callback)
 {
     OnMessageCallback_t subscription = {nullptr, 0, callback};
     _onMessageCallbacks.push_back(subscription);
 }
 
+/**
+ * @brief Sets a callback for a specific topic.
+ *
+ * @param topic The topic to subscribe to.
+ * @param qos The Quality of Service level.
+ * @param callback The callback function to call when a message is received for this topic.
+ */
 void ESP32MQTTClient::setOnTopicCallback(const char *topic, int qos, OnMessageCallback callback)
 {
     if (!topic)
@@ -445,16 +637,34 @@ void ESP32MQTTClient::setOnTopicCallback(const char *topic, int qos, OnMessageCa
     }
 }
 
+/**
+ * @brief Adds a callback for when a message is published.
+ *
+ * @param callback The callback function to add.
+ */
 void ESP32MQTTClient::setOnPublishCallback(OnPublishCallback callback)
 {
     _onPublishCallbacks.push_back(callback);
 }
 
+/**
+ * @brief Adds a callback for when an error occurs.
+ *
+ * @param callback The callback function to add.
+ */
 void ESP32MQTTClient::setOnErrorCallback(OnErrorCallback callback)
 {
     _onErrorCallbacks.push_back(callback);
 }
 
+/**
+ * @brief Starts the MQTT client loop.
+ *
+ * This function must be called in the main loop of the application.
+ * It attempts to connect to the MQTT broker if the connection state is not connected.
+ *
+ * @return true if the connection attempt was successful, false otherwise.
+ */
 bool ESP32MQTTClient::loopStart()
 {
     bool success = false;
@@ -540,6 +750,12 @@ bool ESP32MQTTClient::loopStart()
     return success;
 }
 
+/**
+ * @brief Disconnects the MQTT client.
+ *
+ * This function initiates a clean disconnect of the MQTT client.
+ * It waits for all disconnect events to be processed.
+ */
 void ESP32MQTTClient::disconnect()
 {
     if (_mqtt_client == nullptr)
@@ -568,6 +784,11 @@ void ESP32MQTTClient::disconnect()
         ESP_LOGI(TAG, "MQTT client stopped.");
 }
 
+/**
+ * @brief Forces the MQTT client to stop.
+ *
+ * This function stops the MQTT client immediately, regardless of its current state.
+ */
 void ESP32MQTTClient::forceStop()
 {
     if (_mqtt_client == nullptr)
@@ -589,11 +810,13 @@ void ESP32MQTTClient::forceStop()
 }
 
 /**
- * Matching MQTT topics, handling the eventual presence of a single wildcard character
+ * @brief Matches MQTT topics, handling the eventual presence of a single wildcard character.
  *
- * @param topic1 is the topic may contain a wildcard
- * @param topic2 must not contain wildcards
- * @return true on MQTT topic match, false otherwise
+ * This function checks if a topic1 matches a topic2, where topic2 may contain wildcards.
+ *
+ * @param topic1 is the topic may contain a wildcard.
+ * @param topic2 must not contain wildcards.
+ * @return true on MQTT topic match, false otherwise.
  */
 bool ESP32MQTTClient::mqttTopicMatch(const std::string &topic1, const std::string &topic2)
 {
@@ -627,6 +850,16 @@ bool ESP32MQTTClient::mqttTopicMatch(const std::string &topic1, const std::strin
     return false;
 }
 
+/**
+ * @brief Callback function for when a message is received from the MQTT broker.
+ *
+ * This function processes the received message, converts it to a string, and
+ * calls the appropriate subscriber callbacks.
+ *
+ * @param topic The topic of the received message.
+ * @param payload The payload of the received message.
+ * @param length The length of the payload.
+ */
 void ESP32MQTTClient::onMessageReceivedCallback(const char *topic, char *payload, unsigned int length)
 {
 
@@ -673,6 +906,15 @@ void ESP32MQTTClient::onMessageReceivedCallback(const char *topic, char *payload
     }
 }
 
+/**
+ * @brief Callback function for handling MQTT events.
+ *
+ * This function is registered as the event handler for the MQTT client.
+ * It processes different event types (CONNECTED, DATA, SUBSCRIBED, etc.)
+ * and calls the appropriate callback functions.
+ *
+ * @param event The MQTT event handle.
+ */
 void ESP32MQTTClient::onEventCallback(esp_mqtt_event_handle_t event)
 {
     //_event = &event;
@@ -742,6 +984,14 @@ void ESP32MQTTClient::onEventCallback(esp_mqtt_event_handle_t event)
     }
 }
 
+/**
+ * @brief Callback function for when the MQTT client connects.
+ *
+ * This function is called when the MQTT client successfully connects to the broker.
+ * It resubscribes to all topics that were subscribed via setOnTopicCallback.
+ *
+ * @param event The MQTT event handle.
+ */
 void ESP32MQTTClient::_onConnect(esp_mqtt_event_handle_t &event)
 {
     if (_enableSerialLogs)
@@ -760,6 +1010,14 @@ void ESP32MQTTClient::_onConnect(esp_mqtt_event_handle_t &event)
     }
 }
 
+/**
+ * @brief Callback function for when the MQTT client disconnects.
+ *
+ * This function is called when the MQTT client disconnects from the broker.
+ * It calls all registered disconnect callbacks.
+ *
+ * @param event The MQTT event handle.
+ */
 void ESP32MQTTClient::_onDisconnect(esp_mqtt_event_handle_t &event)
 {
     if (_enableSerialLogs)
@@ -771,6 +1029,14 @@ void ESP32MQTTClient::_onDisconnect(esp_mqtt_event_handle_t &event)
     _mqttClientStop = true;
 }
 
+/**
+ * @brief Callback function for when the MQTT client subscribes.
+ *
+ * This function is called when the MQTT client successfully subscribes to a topic.
+ * It calls all registered subscribe callbacks.
+ *
+ * @param event The MQTT event handle.
+ */
 void ESP32MQTTClient::_onSubscribe(esp_mqtt_event_handle_t &event)
 {
     if (_enableSerialLogs)
@@ -781,6 +1047,14 @@ void ESP32MQTTClient::_onSubscribe(esp_mqtt_event_handle_t &event)
     }
 }
 
+/**
+ * @brief Callback function for when the MQTT client unsubscribes.
+ *
+ * This function is called when the MQTT client successfully unsubscribes from a topic.
+ * It calls all registered unsubscribe callbacks.
+ *
+ * @param event The MQTT event handle.
+ */
 void ESP32MQTTClient::_onUnsubscribe(esp_mqtt_event_handle_t &event)
 {
     if (_enableSerialLogs)
@@ -791,6 +1065,14 @@ void ESP32MQTTClient::_onUnsubscribe(esp_mqtt_event_handle_t &event)
     }
 }
 
+/**
+ * @brief Callback function for when a message is received.
+ *
+ * This function is called when a message is received from the MQTT broker.
+ * It processes the message and calls the appropriate subscriber callbacks.
+ *
+ * @param event The MQTT event handle.
+ */
 void ESP32MQTTClient::_onMessage(esp_mqtt_event_handle_t &event)
 {
     // ESP_LOGI(TAG, "MQTT_EVENT_DATA");
@@ -884,6 +1166,14 @@ void ESP32MQTTClient::_onMessage(esp_mqtt_event_handle_t &event)
     }
 }
 
+/**
+ * @brief Callback function for when a message is published.
+ *
+ * This function is called when a message is successfully published to the MQTT broker.
+ * It calls all registered publish callbacks.
+ *
+ * @param event The MQTT event handle.
+ */
 void ESP32MQTTClient::_onPublish(esp_mqtt_event_handle_t &event)
 {
     if (_enableSerialLogs)
@@ -894,6 +1184,12 @@ void ESP32MQTTClient::_onPublish(esp_mqtt_event_handle_t &event)
     }
 }
 
+/**
+ * @brief Logs an error if the error code is non-zero.
+ *
+ * @param message The description of the error.
+ * @param error_code The error code.
+ */
 static void logErrorIfNonZero(const char *message, int error_code)
 {
     if (error_code != 0)
@@ -902,6 +1198,14 @@ static void logErrorIfNonZero(const char *message, int error_code)
     }
 }
 
+/**
+ * @brief Callback function for when an error occurs.
+ *
+ * This function is called when an error event is received from the MQTT client.
+ * It prints the error details and calls all registered error callbacks.
+ *
+ * @param event The MQTT event handle.
+ */
 void ESP32MQTTClient::_onError(esp_mqtt_event_handle_t &event)
 {
     if (_enableSerialLogs)
