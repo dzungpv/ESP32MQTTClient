@@ -189,9 +189,40 @@ public:
     void setAutoReconnect(bool choice);
     bool setMaxOutPacketSize(const uint16_t size);
     bool setMaxPacketSize(const uint16_t size); // override the default value of 1024
+
+    /**
+     * @brief Publishes a message to a topic.
+     *
+     * @param topic The topic to publish to.
+     * @param payload The payload for the message. Defaults to nullptr.
+     * @param qos The QoS level (0-2) for the message. If client not connected. Dropping message with QoS = 0.
+     * @param retain The retain flag for the message.
+     * False means client is not connected or blocking until the message is published.
+     * @return true or false.
+     */
     bool publish(const std::string &topic, const std::string &payload, int qos = 0, bool retain = false);
+
+    /**
+     * @brief Subscribes to a topic. Server must be connected
+     * for a subscription to succeed.
+     *
+     * @param topic The topic to subscribe to.
+     * @param messageReceivedCallback MessageReceivedCallback.
+     * @param qos The QoS level for the subscription.
+     * @return true or false.
+     */
     bool subscribe(const std::string &topic, MessageReceivedCallback messageReceivedCallback, uint8_t qos = 0);
-    bool subscribe(const std::string &topic, MessageReceivedCallbackWithTopic messageReceivedCallback, uint8_t qos = 0);
+
+    /**
+     * @brief Subscribes to a topic. Server must be connected
+     * for a subscription to succeed.
+     *
+     * @param topic The topic to subscribe to.
+     * @param messageReceivedCallbackWithTopic MessageReceivedCallbackWithTopic.
+     * @param qos The QoS level for the subscription.
+     * @return true or false.
+     */
+    bool subscribe(const std::string &topic, MessageReceivedCallbackWithTopic messageReceivedCallbackWithTopic, uint8_t qos = 0);
 
     /**
      * @brief Subscribes to a topic. Server must be connected
@@ -216,15 +247,15 @@ public:
      * @brief Publishes a message to a topic.
      *
      * @param topic The topic to publish to.
-     * @param payload The payload for the message. Defaults to nullptr.
-     * @param length The length of the payload. Defaults to 0.
      * @param qos The QoS level (0-2) for the message. If client not connected. Dropping message with QoS = 0.
      * @param retain The retain flag for the message.
+     * @param payload The payload for the message. Defaults to nullptr.
+     * @param length The length of the payload. Defaults to 0.
      * @param async Whether to enqueue the message for asynchronous publishing.
      * Defaults to true. False means blocking until the message is published.
      * @return Message ID on success, -1 on failure.
      */
-    int publish(const char *topic, const char *payload = nullptr, int length = 0, int qos = 1, bool retain = false, bool async = true);
+    int publish(const char *topic, int qos, bool retain, const char *payload = nullptr, int length = 0, bool async = true);
     
     /**
      * @brief Unsubscribes from a topic. Server must be connected

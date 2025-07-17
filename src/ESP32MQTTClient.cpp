@@ -197,12 +197,13 @@ bool ESP32MQTTClient::subscribe(const std::string &topic, MessageReceivedCallbac
     return success;
 }
 
-bool ESP32MQTTClient::subscribe(const std::string &topic, MessageReceivedCallbackWithTopic messageReceivedCallback, uint8_t qos)
+bool ESP32MQTTClient::subscribe(const std::string &topic, MessageReceivedCallbackWithTopic messageReceivedCallbackWithTopic, uint8_t qos)
 {
 
-    if (subscribe(topic, (MessageReceivedCallback)nullptr, qos))
+    if (subscribe(topic, (MessageReceivedCallback)nullptr, qos)) // normal subscribe with null MessageReceivedCallback
     {
-        _topicSubscriptionList[_topicSubscriptionList.size() - 1].callbackWithTopic = messageReceivedCallback;
+        // add callbackWithTopic to the successful subscribe
+        _topicSubscriptionList[_topicSubscriptionList.size() - 1].callbackWithTopic = messageReceivedCallbackWithTopic;
         return true;
     }
 
@@ -233,7 +234,7 @@ int ESP32MQTTClient::unsubscribe(const char *topic)
 }
 
 
-int ESP32MQTTClient::publish(const char *topic, const char *payload, int length, int qos, bool retain, bool async)
+int ESP32MQTTClient::publish(const char *topic, int qos, bool retain, const char *payload, int length, bool async)
 {
     // drop message if not connected and QoS is 0
     if (!isConnected() && qos == 0)
