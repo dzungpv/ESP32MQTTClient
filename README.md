@@ -75,13 +75,11 @@ Configures a last will message that the broker publishes when the client disconn
 void setTaskPrio(int prio);
 bool setMaxPacketSize(const uint16_t size);
 bool setMaxOutPacketSize(const uint16_t size);
-void enableDrasticResetOnConnectionFailures();
 ```
 
 - `setTaskPrio()`: Sets MQTT client task priority
 - `setMaxPacketSize()`: Sets maximum packet size for both incoming/outgoing (default: 1024 bytes)
 - `setMaxOutPacketSize()`: Sets maximum outgoing packet size only
-- `enableDrasticResetOnConnectionFailures()`: Enables hardware reset on persistent connection failures
 
 ### Connection Management
 

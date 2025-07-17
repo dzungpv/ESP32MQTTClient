@@ -62,7 +62,6 @@ private:
 
     // General behaviour related
     bool _enableSerialLogs;
-    bool _drasticResetOnConnectionFailures;
 
 #if ESP_IDF_VERSION < ESP_IDF_VERSION_VAL(5, 0, 0)
     static esp_err_t handleMQTT(esp_mqtt_event_handle_t event);
@@ -225,17 +224,6 @@ public:
      * @note Must be set before the first loopStart() call.
      */
     void enableLastWillMessage(const char *topic, const char *message, const bool retain = false);
-
-    /**
-     * @brief Enables drastic reset on connection failures.
-     * 
-     * This can be useful in special cases where the ESP32 board hangs
-     * and needs resetting. When enabled, the device will perform a
-     * hardware reset if connection failures persist.
-     * 
-     * @note Use with caution as this will restart the entire device.
-     */
-    void enableDrasticResetOnConnectionFailures() { _drasticResetOnConnectionFailures = true; }
 
     /**
      * @brief Disables automatic reconnection for the MQTT client.
