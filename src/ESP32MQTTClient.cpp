@@ -862,27 +862,20 @@ bool ESP32MQTTClient::mqttTopicMatch(const std::string &topic1, const std::strin
  */
 void ESP32MQTTClient::onMessageReceivedCallback(const char *topic, char *payload, unsigned int length)
 {
-
-    // Convert the payload into a String
-    unsigned int strTerminationPos;
-    if (strlen(topic) + length + 9 >= _mqttMaxInPacketSize)
+    // Convert the payload into a string
+    unsigned int maxPayloadSize = _mqttMaxInPacketSize - strlen(topic) - 10; // 10 bytes overhead
+    unsigned int actualPayloadSize = (length > maxPayloadSize) ? maxPayloadSize : length; // truncate if it longer
+    if (length > maxPayloadSize)
     {
-        strTerminationPos = length;
-
         if (_enableSerialLogs)
-            ESP_LOGW(TAG, "MQTT! Your message may be truncated, please set setMaxPacketSize() to a higher value.");
+        {
+            ESP_LOGW(TAG, "MQTT! Your message may be truncated, please set setMaxPacketSize() to a higher value. Len: %d, max: %d", length, maxPayloadSize);
+        }
     }
-    else
-        strTerminationPos = length;
-
-    // Second, we add the string termination code at the end of the payload and we convert it to a String object
-
-
     std::string payloadStr;
-    if (payload)
+    if (payload && actualPayloadSize > 0)
     {
-        payload[strTerminationPos] = '\0';
-        payloadStr = std::string(payload);
+        payloadStr = std::string(payload, actualPayloadSize);
     }
     else
     {
@@ -891,7 +884,9 @@ void ESP32MQTTClient::onMessageReceivedCallback(const char *topic, char *payload
     std::string topicStr(topic);
     // Logging
     if (_enableSerialLogs)
+    {
         ESP_LOGI(TAG, "MQTT >> [%s] %s", topic, payloadStr.c_str());
+    }
 
     // Send the message to subscribers
     for (std::size_t i = 0; i < _topicSubscriptionList.size(); i++)
