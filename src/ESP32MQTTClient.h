@@ -134,7 +134,7 @@ public:
      * @param callback The callback function with the signature void(bool sessionPresent) to
      * be registered.
      */
-    void setOnDisonnectCallback(OnDisconnectCallback callback);
+    void setOnDisconnectCallback(OnDisconnectCallback callback);
 
     /**
      * @brief Registers a callback function to be called when a topic is subscribed.

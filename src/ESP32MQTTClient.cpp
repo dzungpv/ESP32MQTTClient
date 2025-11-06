@@ -561,7 +561,7 @@ void ESP32MQTTClient::setOnConnectCallback(OnConnectCallback callback)
  *
  * @param callback The callback function to add.
  */
-void ESP32MQTTClient::setOnDisonnectCallback(OnDisconnectCallback callback)
+void ESP32MQTTClient::setOnDisconnectCallback(OnDisconnectCallback callback)
 {
     _onDisconnectCallbacks.push_back(callback);
 }
