@@ -37,6 +37,21 @@ ESP32MQTTClient::~ESP32MQTTClient()
         _buffer = nullptr; // Set to nullptr to avoid dangling pointers
     }
 
+    // Free memory in _clientCertStr
+    if (_clientCertStr.empty()) {
+        _clientCertStr.clear();
+    }
+
+    // Free memory in _clientKeyStr
+    if (_clientKeyStr.empty()) {
+        _clientKeyStr.clear();
+    }
+
+    // Free memory in _caCertStr
+    if (_caCertStr.empty()) {
+        _caCertStr.clear();
+    }
+
     if (_topic != nullptr)
     {
         free(_topic);
@@ -127,10 +142,16 @@ void ESP32MQTTClient::setTaskPrio(int prio)
  */
 void ESP32MQTTClient::setClientCert(const char *clientCert)
 {
+    if (clientCert) {
+        _clientCertStr = clientCert;
+    } else {
+        _clientCertStr.clear();
+    }
+    const char* ptr = _clientCertStr.empty() ? nullptr : _clientCertStr.c_str();
 #if ESP_IDF_VERSION < ESP_IDF_VERSION_VAL(5, 0, 0)
-    _mqtt_config.client_cert_pem = clientCert;
+    _mqtt_config.client_cert_pem = ptr;
 #else  // IDF CHECK
-    _mqtt_config.credentials.authentication.certificate = clientCert;
+    _mqtt_config.credentials.authentication.certificate = ptr;
 #endif // IDF CHECK
 }
 
@@ -141,10 +162,16 @@ void ESP32MQTTClient::setClientCert(const char *clientCert)
  */
 void ESP32MQTTClient::setCaCert(const char *caCert)
 {
+    if (caCert) {
+        _caCertStr = caCert;
+    } else {
+        _caCertStr.clear();
+    }
+    const char* ptr = _caCertStr.empty() ? nullptr : _caCertStr.c_str();
 #if ESP_IDF_VERSION < ESP_IDF_VERSION_VAL(5, 0, 0)
-    _mqtt_config.cert_pem = caCert;
+    _mqtt_config.cert_pem = ptr;
 #else  // IDF CHECK
-    _mqtt_config.broker.verification.certificate = caCert;
+    _mqtt_config.broker.verification.certificate = ptr;
 #endif // IDF CHECK
 }
 
@@ -155,10 +182,16 @@ void ESP32MQTTClient::setCaCert(const char *caCert)
  */
 void ESP32MQTTClient::setKey(const char *clientKey)
 {
+    if (clientKey) {
+        _clientKeyStr = clientKey;
+    } else {
+        _clientKeyStr.clear();
+    }
+    const char* ptr = _clientKeyStr.empty() ? nullptr : _clientKeyStr.c_str();
 #if ESP_IDF_VERSION < ESP_IDF_VERSION_VAL(5, 0, 0)
-    _mqtt_config.client_key_pem = clientKey;
+    _mqtt_config.client_key_pem = ptr;
 #else  // IDF CHECK
-    _mqtt_config.credentials.authentication.key = clientKey;
+    _mqtt_config.credentials.authentication.key = ptr;
 #endif // IDF CHECK
 }
 // =============== Public functions for interaction with this lib =================
@@ -699,6 +732,11 @@ bool ESP32MQTTClient::loopStart()
         _mqtt_config.out_buffer_size = _mqttMaxOutPacketSize;
         _mqtt_config.buffer_size = _mqttMaxInPacketSize;
 
+        // Ensure persistent cert pointers are used
+        _mqtt_config.cert_pem = _caCertStr.empty() ? nullptr : _caCertStr.c_str();
+        _mqtt_config.client_cert_pem = _clientCertStr.empty() ? nullptr : _clientCertStr.c_str();
+        _mqtt_config.client_key_pem = _clientKeyStr.empty() ? nullptr : _clientKeyStr.c_str();
+
         _mqtt_config.event_handle = handleMQTT;
         _mqtt_client = esp_mqtt_client_init(&_mqtt_config);
 #else  // IDF CHECK
@@ -718,6 +756,11 @@ bool ESP32MQTTClient::loopStart()
         _mqtt_config.session.disable_clean_session = _disableMQTTCleanSession;
         _mqtt_config.buffer.out_size = _mqttMaxOutPacketSize;
         _mqtt_config.buffer.size = _mqttMaxInPacketSize;
+
+        // Ensure persistent cert pointers are used
+        _mqtt_config.broker.verification.certificate = _caCertStr.empty() ? nullptr : _caCertStr.c_str();
+        _mqtt_config.credentials.authentication.certificate = _clientCertStr.empty() ? nullptr : _clientCertStr.c_str();
+        _mqtt_config.credentials.authentication.key = _clientKeyStr.empty() ? nullptr : _clientKeyStr.c_str();
 
         _mqtt_client = esp_mqtt_client_init(&_mqtt_config);
         err = esp_mqtt_client_register_event(_mqtt_client, MQTT_EVENT_ANY, handleMQTT, this);

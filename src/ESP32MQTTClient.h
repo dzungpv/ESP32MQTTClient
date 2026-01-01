@@ -49,6 +49,10 @@ private:
     int _mqttMaxInPacketSize;
     int _mqttMaxOutPacketSize;
 
+    std::string _caCertStr;
+    std::string _clientCertStr;
+    std::string _clientKeyStr;
+
     char *_buffer = nullptr;
     char *_topic = nullptr;
 
