@@ -863,31 +863,43 @@ void ESP32MQTTClient::forceStop()
  */
 bool ESP32MQTTClient::mqttTopicMatch(const std::string &topic1, const std::string &topic2)
 {
-    size_t i = 0;
+    // topic1 is the subscription pattern, potentially containing '#' or '+'
+    // topic2 is the actual published topic
+    size_t i = 0; // index for topic1 (pattern)
+    size_t j = 0; // index for topic2 (actual)
 
-    if ((i = topic1.find('#')) != std::string::npos)
-    {
-        std::string t1a = topic1.substr(0, i);
-        std::string t1b = topic1.substr(i + 1);
-        if ((t1a.length() == 0 || topic2.rfind(t1a, 0) == 0) &&
-            (t1b.length() == 0 || (topic2.size() >= t1b.size() && topic2.compare(topic2.size() - t1b.size(), t1b.size(), t1b) == 0)))
+    while (i < topic1.length() && j < topic2.length()) {
+        if (topic1[i] == topic2[j]) {
+            i++;
+            j++;
+        } else if (topic1[i] == '+') {
+            // '+' matches exactly one level.
+            // That level continues until the next '/' or end of topic2
+            while (j < topic2.length() && topic2[j] != '/') {
+                j++;
+            }
+            i++; // Move past the '+' in pattern
+        } else if (topic1[i] == '#') {
+            // '#' matches everything else to the end of topic2
             return true;
-    }
-    else if ((i = topic1.find('+')) != std::string::npos)
-    {
-        std::string t1a = topic1.substr(0, i);
-        std::string t1b = topic1.substr(i + 1);
-
-        if ((t1a.length() == 0 || topic2.rfind(t1a, 0) == 0) &&
-            (t1b.length() == 0 || (topic2.size() >= t1b.size() && topic2.compare(topic2.size() - t1b.size(), t1b.size(), t1b) == 0)))
-        {
-            if (topic2.substr(t1a.length(), topic2.length() - t1b.length() - t1a.length()).find('/') == std::string::npos)
-                return true;
+        } else {
+            return false;
         }
     }
-    else
-    {
-        return topic1 == topic2;
+
+    // After consuming all we can, we might be at the end of both strings:
+    if (i == topic1.length() && j == topic2.length()) {
+        return true;
+    }
+    
+    // Sometimes the pattern has "foo/#" and the topic is just "foo"
+    if (j == topic2.length() && i < topic1.length() && topic1.substr(i) == "/#") {
+        return true;
+    }
+    
+    // Also pattern just "#" and topic is empty/anything
+    if (i < topic1.length() && topic1[i] == '#') {
+       return true;
     }
 
     return false;
