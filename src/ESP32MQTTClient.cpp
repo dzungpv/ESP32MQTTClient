@@ -763,7 +763,12 @@ bool ESP32MQTTClient::loopStart()
         _mqtt_config.credentials.authentication.key = _clientKeyStr.empty() ? nullptr : _clientKeyStr.c_str();
 
         _mqtt_client = esp_mqtt_client_init(&_mqtt_config);
-        err = esp_mqtt_client_register_event(_mqtt_client, MQTT_EVENT_ANY, handleMQTT, this);
+        if (_mqtt_client == nullptr) {
+            ESP_LOGE(TAG, "esp_mqtt_client_init failed");
+            err = ESP_FAIL;
+        } else {
+            err = esp_mqtt_client_register_event(_mqtt_client, MQTT_EVENT_ANY, handleMQTT, this);
+        }
 #endif // IDF CHECK
         if (_mqtt_client != nullptr && err == ESP_OK)
         {

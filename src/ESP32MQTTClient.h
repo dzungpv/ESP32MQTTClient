@@ -436,6 +436,11 @@ public:
     inline void setURL(const char *url, const uint16_t port, const char *username = "", const char *password = "")
     { 
         char *uri = (char *)malloc(MAX_LEN_MQTT_URI);
+        if (uri == nullptr || url == nullptr) {
+            free(uri);
+            ESP_LOGE("ESP32MQTTClient", "MQTT URL allocation failed");
+            return;
+        }
         // Determine the URI scheme based on the port, then build the URI in one call
         const char *scheme = nullptr;
         switch (port)
