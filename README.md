@@ -108,6 +108,9 @@ bool isMyTurn(esp_mqtt_client_handle_t client) const;
 // Using std::string
 bool publish(const std::string &topic, const std::string &payload, int qos = 0, bool retain = false);
 
+// Using a raw buffer with explicit length, for binary payloads (e.g. Protocol Buffers)
+bool publish(const std::string &topic, const uint8_t *payload, size_t payloadLength, int qos = 0, bool retain = false);
+
 // Using C-style strings
 int publish(const char *topic, int qos, bool retain, const char *payload = nullptr, int length = 0, bool async = true);
 ```
@@ -202,7 +205,7 @@ mqttClient.setOnMessageCallback([](esp_mqtt_client_handle_t client, char *topic,
 ## Behaviour notes
 
 - **Large messages.** A message bigger than the receive buffer (`setMaxPacketSize()`, 1024 bytes by default) is reassembled and delivered once, complete, to every kind of callback. It is dropped with an error log if there is not enough free memory to hold it.
-- **Binary payloads.** `publish(std::string)` and the `std::string` subscription callbacks keep `\0` bytes. The `char *payload` callbacks get a C string and no length, so they only see the data up to the first `\0`.
+- **Binary payloads.** `publish(std::string)`, `publish(topic, buffer, length)` and the `std::string` subscription callbacks keep `\0` bytes. The `char *payload` callbacks get a C string and no length, so they only see the data up to the first `\0`.
 - **Wildcards.** Topic filters follow the MQTT specification, including several `+`, `+` combined with `#`, `a/#` matching `a`, and `$` topics not matched by a leading wildcard.
 - **Thread safety.** Callbacks can be registered, messages published and topics subscribed/unsubscribed from any task, including from inside a callback, and while another task restarts the client. Callbacks run on the MQTT task. `loopStart()`, `disconnect()` and `forceStop()` must be called from one task at a time, and the connection settings (`setURI()`, `setURL()`, ...) changed only while the client is stopped.
 - **Stopped client.** After `disconnect()` or `forceStop()`, `publish()` returns `-1` / `false` until the next `loopStart()`. esp-mqtt discards the messages still queued when the client stops.

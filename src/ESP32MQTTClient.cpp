@@ -1,6 +1,7 @@
 #include "ESP32MQTTClient.h"
 #include <cstdlib>
 #include <cstring>
+#include <limits>
 #include <utility>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -395,6 +396,29 @@ bool ESP32MQTTClient::setMaxPacketSize(const uint16_t size)
  */
 bool ESP32MQTTClient::publish(const std::string &topic, const std::string &payload, int qos, bool retain)
 {
+    return publish(topic, reinterpret_cast<const uint8_t *>(payload.data()), payload.size(), qos, retain);
+}
+
+/**
+ * @brief Publishes a raw buffer to the MQTT broker.
+ *
+ * @param topic The topic to publish to.
+ * @param payload The payload bytes, can be nullptr when payloadLength is 0.
+ * @param payloadLength The number of bytes to send.
+ * @param qos The Quality of Service level (0, 1, or 2).
+ * @param retain Whether the message should be retained.
+ * @return true if the message was published successfully, false otherwise.
+ */
+bool ESP32MQTTClient::publish(const std::string &topic, const uint8_t *payload, size_t payloadLength, int qos, bool retain)
+{
+    if ((payload == nullptr && payloadLength > 0) ||
+        payloadLength > static_cast<size_t>(std::numeric_limits<int>::max()))
+    {
+        if (_enableSerialLogs)
+            ESP_LOGW(TAG, "Publish payload pointer or length is invalid");
+        return false;
+    }
+
     // Do not try to publish if MQTT is not connected.
     if (!isConnected()) //! isConnected())
     {
@@ -405,15 +429,18 @@ bool ESP32MQTTClient::publish(const std::string &topic, const std::string &paylo
     }
 
     // The length is given explicitly so payloads containing '\0' are sent completely.
+    // esp-mqtt takes a length of 0 as a C string and calls strlen() on the data, so an empty
+    // payload is passed as nullptr: nothing is read past the buffer.
     // esp-mqtt returns the message id (>= 0) on success, -1 on failure and -2 when the outbox is full.
+    const char *data = payloadLength == 0 ? nullptr : reinterpret_cast<const char *>(payload);
     ClientRef client(*this);
     const bool success = client.get() != nullptr &&
-                         esp_mqtt_client_publish(client.get(), topic.c_str(), payload.c_str(), static_cast<int>(payload.size()), qos, retain) >= 0;
+                         esp_mqtt_client_publish(client.get(), topic.c_str(), data, static_cast<int>(payloadLength), qos, retain) >= 0;
 
     if (_enableSerialLogs)
     {
         if (success)
-            ESP_LOGI(TAG, "MQTT << [%s] %s", topic.c_str(), payload.c_str());
+            ESP_LOGI(TAG, "MQTT << [%s] (%u bytes)", topic.c_str(), (unsigned int)payloadLength);
         else
             ESP_LOGW(TAG, "Publish failed, is the message too long ? (see setMaxPacketSize())"); // This can occurs if the message is too long according to the maximum defined in PubsubClient.h
     }

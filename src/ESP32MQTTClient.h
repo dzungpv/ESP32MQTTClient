@@ -1,6 +1,7 @@
 #pragma once
 
 #include <atomic>
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <mutex>
@@ -354,6 +355,21 @@ public:
      * @return True if the message was published successfully, false otherwise.
      */
     bool publish(const std::string &topic, const std::string &payload, int qos = 0, bool retain = false);
+
+    /**
+     * @brief Publishes a raw buffer with an explicit length, for binary payloads
+     * (e.g. Protocol Buffers) without converting them to std::string first.
+     *
+     * @param topic The topic to publish to.
+     * @param payload The payload bytes. Can be nullptr when payloadLength is 0.
+     * @param payloadLength The number of bytes to send from payload.
+     * @param qos The QoS level (0-2) for the message. If client not connected,
+     *            dropping message with QoS = 0.
+     * @param retain The retain flag for the message.
+     * @return True if the message was published successfully, false otherwise
+     *         (also when payload is nullptr with a non-zero length).
+     */
+    bool publish(const std::string &topic, const uint8_t *payload, size_t payloadLength, int qos = 0, bool retain = false);
 
     /**
      * @brief Subscribes to a topic with a message received callback.

@@ -174,8 +174,11 @@ extern "C"
     int esp_mqtt_client_publish(esp_mqtt_client_handle_t client, const char *topic, const char *data, int len, int, int)
     {
         std::lock_guard<std::mutex> l(g_fake_mutex);
+        // Like esp-mqtt: a length <= 0 with data means a C string
+        if (len <= 0 && data != nullptr)
+            len = (int)strlen(data);
         if (g_publish_ret >= 0)
-            client->pubs.emplace_back(topic, std::string(data, (size_t)(len ? len : (int)strlen(data))));
+            client->pubs.emplace_back(topic, std::string(data ? data : "", (size_t)(len > 0 ? len : 0)));
         return g_publish_ret;
     }
 #if IDF4
@@ -718,10 +721,29 @@ static void testSubscribe()
     CHECK(c->pubs.size() == 1 && c->pubs[0].second.size() == 3);
     CHECK(m.publish("t", ""));
     CHECK(c->pubs.size() == 2 && c->pubs[1].second.empty());
+
+    // Raw buffer: the exact bytes, '\0' included
+    const uint8_t binary[] = {'A', 0, 'B', 0xFF};
+    CHECK(m.publish("bin", binary, sizeof(binary), 1, true));
+    CHECK(c->pubs.size() == 3 && c->pubs[2].first == "bin" && c->pubs[2].second == std::string("A\0B\xFF", 4));
+    // Empty buffer without '\0' (heap allocated, so ASan sees any read past it): nothing is read
+    uint8_t *one = new uint8_t[1];
+    one[0] = 'Z';
+    CHECK(m.publish("bin", one, 0));
+    CHECK(c->pubs.size() == 4 && c->pubs[3].second.empty());
+    delete[] one;
+    const uint8_t *none = nullptr;
+    CHECK(m.publish("bin", none, 0));
+    CHECK(c->pubs.size() == 5 && c->pubs[4].second.empty());
+    // Invalid pointer or length: rejected before esp-mqtt
+    CHECK(!m.publish("bin", none, 1));
+    CHECK(!m.publish("bin", binary, (size_t)std::numeric_limits<int>::max() + 1));
+    CHECK(c->pubs.size() == 5);
     g_publish_ret = 7;
 
     fireSimple(c, MQTT_EVENT_DISCONNECTED);
     CHECK(!m.publish("t", "p"));
+    CHECK(!m.publish("bin", binary, sizeof(binary), 1));
     CHECK(!m.unsubscribe(std::string("a")));
 }
 
