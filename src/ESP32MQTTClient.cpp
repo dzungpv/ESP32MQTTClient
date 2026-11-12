@@ -1502,9 +1502,10 @@ void ESP32MQTTClient::_onMessage(esp_mqtt_event_handle_t &event)
     const std::size_t total = event->total_data_len > 0 ? static_cast<std::size_t>(event->total_data_len) : 0;
     const std::size_t offset = event->current_data_offset > 0 ? static_cast<std::size_t>(event->current_data_offset) : 0;
 
-    if (event->topic != nullptr && event->topic_len > 0)
+    if (offset == 0 && event->topic != nullptr && event->topic_len > 0)
     {
-        // First (and most of the time only) part of a message: only this one carries the topic
+        // First (and most of the time only) part of a message. The topic alone does not mark it:
+        // with CONFIG_MQTT_TOPIC_PRESENT_ALL_DATA_EVENTS esp-mqtt sends the topic with every part.
         _rxTopic.assign(event->topic, static_cast<std::size_t>(event->topic_len));
         _rxPayload.clear();
         _rxTotal = total;

@@ -219,8 +219,12 @@ static void fireSimple(esp_mqtt_client *c, esp_mqtt_event_id_t id)
 // bytes (heap allocated, so ASan sees any write past it) and delivered in one or several events.
 // Like esp-mqtt, the offset of a part is the sum of the payload bytes of the previous parts, so
 // it is still 0 for the second part when the topic fills the whole first read.
-static void deliver(esp_mqtt_client *c, const std::string &topic, const std::string &payload, size_t bufSize)
+// topicOnEveryPart mirrors CONFIG_MQTT_TOPIC_PRESENT_ALL_DATA_EVENTS: the next parts also carry
+// the topic (a copy, as the in-buffer is reused for the payload).
+static void deliver(esp_mqtt_client *c, const std::string &topic, const std::string &payload, size_t bufSize,
+                    bool topicOnEveryPart = false)
 {
+    std::string savedTopic = topic;
     const size_t header = 4;
     char *buf = (char *)malloc(bufSize);
     CHECK(header + topic.size() <= bufSize);
@@ -251,8 +255,8 @@ static void deliver(esp_mqtt_client *c, const std::string &topic, const std::str
         if (n > bufSize)
             n = bufSize;
         memcpy(buf, payload.data() + done, n);
-        ev.topic = nullptr;
-        ev.topic_len = 0;
+        ev.topic = topicOnEveryPart ? &savedTopic[0] : nullptr;
+        ev.topic_len = topicOnEveryPart ? (int)savedTopic.size() : 0;
         ev.data = buf;
         ev.data_len = (int)n;
         ev.current_data_offset = (int)done;
@@ -627,6 +631,22 @@ static void testReceive()
         CHECK(sub.count() == 8);
         deliver(c, "big/ok", "yes", 64);
         CHECK(sub.count() == 9 && sub.msgs[8].first == "big/ok" && sub.msgs[8].second == "yes");
+    }
+
+    // 10. CONFIG_MQTT_TOPIC_PRESENT_ALL_DATA_EVENTS: every part carries the topic, only the
+    //     first one (offset 0) starts the message
+    {
+        std::string payload;
+        for (int i = 0; i < 300; i++)
+            payload += (char)('a' + i % 26);
+        deliver(c, "big/all", payload, 64, true);
+        CHECK(sub.count() == 10 && sub.msgs[9].first == "big/all" && sub.msgs[9].second == payload);
+
+        // Topic filling the first read: the second part has offset 0 and the topic again
+        const std::string topic = "big/" + std::string(56, 'a'); // 4 + 60 = 64 bytes
+        deliver(c, topic, "0123456789", 64, true);
+        CHECK(sub.count() == 11 && sub.msgs[10].first == topic && sub.msgs[10].second == "0123456789");
+        CHECK(global.msgs.back().second == "0123456789");
     }
 }
 
