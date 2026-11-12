@@ -157,29 +157,32 @@ public:
     /**
      * @brief Registers a callback function to be called when the MQTT client is connected.
      *
-     * @param callback The callback function with the signature void(bool sessionPresent) to be registered.
+     * @param callback The callback function with the signature
+     * void(esp_mqtt_client_handle_t client, bool sessionPresent) to be registered.
      */
     void setOnConnectCallback(OnConnectCallback callback);
 
     /**
      * @brief Registers a callback function to be called when the MQTT client is disconnected.
      *
-     * @param callback The callback function with the signature void(bool sessionPresent) to
-     * be registered.
+     * @param callback The callback function with the signature
+     * void(esp_mqtt_client_handle_t client, bool sessionPresent) to be registered.
      */
     void setOnDisconnectCallback(OnDisconnectCallback callback);
 
     /**
      * @brief Registers a callback function to be called when a topic is subscribed.
      *
-     * @param callback The callback function with the signature void(int msgId) to be registered.
+     * @param callback The callback function with the signature
+     * void(esp_mqtt_client_handle_t client, int msgId) to be registered.
      */
     void setOnSubscribeCallback(OnSubscribeCallback callback);
 
     /**
      * @brief Registers a callback function to be called when a topic is unsubscribed.
      *
-     * @param callback The callback function with the signature void(int msgId) to be registered.
+     * @param callback The callback function with the signature
+     * void(esp_mqtt_client_handle_t client, int msgId) to be registered.
      */
     void setOnUnsubscribeCallback(OnUnsubscribeCallback callback);
 
@@ -187,8 +190,9 @@ public:
      * @brief Registers a callback function to be called when a message is received,
      * whatever its topic. Multipart messages will be reassembled into the original message.
      *
-     * @param callback The callback function with the signature void(char *topic,
-     * char *payload, int msgId, int retain, int qos, bool dup) to be registered.
+     * @param callback The callback function with the signature
+     * void(esp_mqtt_client_handle_t client, char *topic, char *payload, int retain, int qos, bool dup)
+     * to be registered.
      */
     void setOnMessageCallback(OnMessageCallback callback);
 
@@ -200,22 +204,25 @@ public:
      *
      * @param topic The topic to listen for. MQTT Wildcards are fully supported.
      * @param qos The QoS level to listen for.
-     * @param callback The callback function with the signature void(char *topic,
-     * char *payload, int msgId, int retain, int qos, bool dup) to be registered.
+     * @param callback The callback function with the signature
+     * void(esp_mqtt_client_handle_t client, char *topic, char *payload, int retain, int qos, bool dup)
+     * to be registered.
      */
     void setOnTopicCallback(const char *topic, int qos, OnMessageCallback callback);
 
     /**
      * @brief Registers a callback function to be called when a message is published.
      *
-     * @param callback The callback function with the signature void(int msgId) to be registered.
+     * @param callback The callback function with the signature
+     * void(esp_mqtt_client_handle_t client, int msgId) to be registered.
      */
     void setOnPublishCallback(OnPublishCallback callback);
 
     /**
      * @brief Registers a callback function to be called when an error occurs.
      *
-     * @param callback The callback function with the signature void(esp_mqtt_error_codes_t error) to be registered.
+     * @param callback The callback function with the signature
+     * void(esp_mqtt_client_handle_t client, esp_mqtt_error_codes_t error) to be registered.
      */
     void setOnErrorCallback(OnErrorCallback callback);
 

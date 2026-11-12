@@ -141,7 +141,7 @@ int unsubscribe(const char *topic);          // C-style unsubscription
 #### Event Callbacks
 ```cpp
 void setOnConnectCallback(OnConnectCallback callback);
-void setOnDisonnectCallback(OnDisconnectCallback callback);
+void setOnDisconnectCallback(OnDisconnectCallback callback);
 void setOnSubscribeCallback(OnSubscribeCallback callback);
 void setOnUnsubscribeCallback(OnUnsubscribeCallback callback);
 void setOnPublishCallback(OnPublishCallback callback);

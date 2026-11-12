@@ -28,12 +28,23 @@ class ESP32MQTTClient::ClientRef
 public:
     explicit ClientRef(ESP32MQTTClient &owner) : _owner(owner)
     {
+        if (_owner._mqtt_client.load(std::memory_order_relaxed) == nullptr)
+            return;
+
         // The count is raised before the handle is read: a concurrent releaseClient() either
         // sees this user and waits for it, or detached the handle before and we read nullptr.
         _owner._clientUsers.fetch_add(1);
         _handle = _owner._mqtt_client.load();
+        if (_handle == nullptr)
+            _owner._clientUsers.fetch_sub(1);
+        else
+            _held = true;
     }
-    ~ClientRef() { _owner._clientUsers.fetch_sub(1); }
+    ~ClientRef()
+    {
+        if (_held)
+            _owner._clientUsers.fetch_sub(1);
+    }
     ClientRef(const ClientRef &) = delete;
     ClientRef &operator=(const ClientRef &) = delete;
 
@@ -41,7 +52,8 @@ public:
 
 private:
     ESP32MQTTClient &_owner;
-    esp_mqtt_client_handle_t _handle;
+    esp_mqtt_client_handle_t _handle = nullptr;
+    bool _held = false;
 };
 
 /**
@@ -420,6 +432,13 @@ bool ESP32MQTTClient::publish(const std::string &topic, const std::string &paylo
  */
 bool ESP32MQTTClient::subscribeImpl(const std::string &topic, MessageReceivedCallback callback, MessageReceivedCallbackWithTopic callbackWithTopic, uint8_t qos)
 {
+    if (!isConnected())
+    {
+        if (_enableSerialLogs)
+            ESP_LOGW(TAG, "Trying to subscribe when disconnected, skipping.");
+        return false;
+    }
+
     // esp-mqtt returns the message id (>= 0) on success, -1 on failure and -2 when the outbox is full.
     bool success;
     {
@@ -529,13 +548,22 @@ int ESP32MQTTClient::subscribe(const char *topic, int qos)
  */
 int ESP32MQTTClient::unsubscribe(const char *topic)
 {
-    ClientRef client(*this);
-    if (topic == nullptr || client.get() == nullptr)
+    if (topic == nullptr)
         return -1;
 
-    if (_enableSerialLogs)
-        ESP_LOGI(TAG, "Unsubscribing from topic %s", topic);
-    return esp_mqtt_client_unsubscribe(client.get(), topic);
+    ClientRef client(*this);
+    if (isConnected() && client.get() != nullptr)
+    {
+        if (_enableSerialLogs)
+            ESP_LOGI(TAG, "Unsubscribing from topic %s", topic);
+        return esp_mqtt_client_unsubscribe(client.get(), topic);
+    }
+    else
+    {
+        if (_enableSerialLogs)
+            ESP_LOGW(TAG, "MQTT client not connected. Dropping unsubscription from topic %s.", topic);
+        return -1;
+    }
 }
 
 
@@ -606,6 +634,8 @@ bool ESP32MQTTClient::unsubscribe(const std::string &topic)
         std::lock_guard<std::mutex> lock(_callbackMutex);
         for (std::size_t i = 0; i < _topicSubscriptionList.size() && !found; i++)
             found = _topicSubscriptionList[i].topic == topic;
+        for (std::size_t i = 0; i < _onMessageCallbacks.size() && !found; i++)
+            found = _onMessageCallbacks[i].topic != nullptr && topic == _onMessageCallbacks[i].topic;
     }
 
     // Nothing to do if the topic is not in the list
@@ -633,6 +663,18 @@ bool ESP32MQTTClient::unsubscribe(const std::string &topic)
                 it = _topicSubscriptionList.erase(it);
             else
                 ++it;
+        }
+        for (auto it = _onMessageCallbacks.begin(); it != _onMessageCallbacks.end();)
+        {
+            if (it->topic != nullptr && topic == it->topic)
+            {
+                free(it->topic);
+                it = _onMessageCallbacks.erase(it);
+            }
+            else
+            {
+                ++it;
+            }
         }
     }
 
@@ -1044,6 +1086,9 @@ void ESP32MQTTClient::disconnect()
         return;
     }
 
+    // Reject new messages from publish() immediately while disconnecting
+    const bool wasStarted = _mqttStarted.exchange(false);
+
     if (isConnected())
     {
         if (_enableSerialLogs)
@@ -1066,16 +1111,16 @@ void ESP32MQTTClient::disconnect()
             ESP_LOGW(TAG, "No disconnect event after %d ms, stopping anyway.", DISCONNECT_TIMEOUT_MS);
     }
 
-    if (_mqttStarted)
+    if (wasStarted)
     {
         if (esp_mqtt_client_stop(client) == ESP_OK)
         {
-            _mqttStarted = false;
             if (_enableSerialLogs)
                 ESP_LOGI(TAG, "MQTT client stopped.");
         }
         else
         {
+            _mqttStarted = true;
             ESP_LOGE(TAG, "MQTT client could not be stopped (disconnect() must not be called from a MQTT callback).");
         }
     }
@@ -1467,12 +1512,14 @@ void ESP32MQTTClient::_onMessage(esp_mqtt_event_handle_t &event)
         _rxInProgress = true;
         _rxDropping = false;
 
-        if (total > len)
+        if (total > len && _enableSerialLogs)
+            ESP_LOGV(TAG, "MQTT_EVENT_DATA_MULTIPART_FIRST");
+
+        if (total > _rxPayload.capacity())
         {
-            if (_enableSerialLogs)
-                ESP_LOGV(TAG, "MQTT_EVENT_DATA_MULTIPART_FIRST");
-            // More parts will follow, make sure the complete message can be stored
-            if (total >= heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT))
+            // Make sure the complete message (plus string terminator and allocator overhead) can be stored
+            const std::size_t freeBlock = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
+            if (freeBlock <= 64 || total > freeBlock - 64)
             {
                 _rxDropping = true;
                 ESP_LOGE(TAG, "MQTT! Message of %u bytes on [%s] dropped, not enough memory", (unsigned int)total, _rxTopic.c_str());
@@ -1499,6 +1546,9 @@ void ESP32MQTTClient::_onMessage(esp_mqtt_event_handle_t &event)
     }
     // Otherwise it is the next part of the message in progress. Its offset can be 0 if the
     // first part had no payload byte (topic filling the whole receive buffer).
+
+    if (offset + len > _rxTotal)
+        _rxDropping = true;
 
     // The payload is copied with its length: nothing is written in the esp-mqtt buffer
     if (!_rxDropping && len > 0)

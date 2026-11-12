@@ -1,2 +1,6 @@
 .vscode/
+.DS_Store
+build/
 test/host/build/
+sdkconfig
+sdkconfig.old

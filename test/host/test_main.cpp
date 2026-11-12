@@ -286,9 +286,15 @@ static void testLifecycle()
     int init0 = g_init, destroy0 = g_destroy;
     {
         int connects = 0, disconnects = 0; // declared before the client: its destructor still calls the callbacks
+        bool checkPublishInDisconnect = false;
         ESP32MQTTClient m;
         m.setOnConnectCallback([&](esp_mqtt_client_handle_t, bool) { connects++; });
-        m.setOnDisconnectCallback([&](esp_mqtt_client_handle_t, bool) { disconnects++; g_order += "cb;"; });
+        m.setOnDisconnectCallback([&](esp_mqtt_client_handle_t, bool) {
+            disconnects++;
+            g_order += "cb;";
+            if (checkPublishInDisconnect)
+                CHECK(m.publish("t", 1, false, "x") == -1); // disconnect() in progress: must not enqueue
+        });
         CHECK(!m.loopStart()); // no URI
         CHECK(g_init == init0);
         esp_mqtt_client *c = startClient(m); // the first event used to crash on IDF 4.x (null user_context)
@@ -305,7 +311,9 @@ static void testLifecycle()
         fireSimple(c, MQTT_EVENT_CONNECTED);
         g_order.clear();
         g_delays = 0;
+        checkPublishInDisconnect = true;
         m.disconnect();
+        checkPublishInDisconnect = false;
         CHECK(g_order == "cb;stop;"); // callbacks before the stop
         CHECK(disconnects == 2 && c->stops == 1 && !m.isConnected());
 
@@ -511,6 +519,8 @@ static void testCallbacksApi()
     CHECK(m.publish("t", 0, false, "abc") == -1); // QoS 0 dropped when disconnected
     CHECK(m.publish("t", 1, false, "abc") == 9);  // QoS 1 queued
     CHECK(m.subscribe("raw", 0) == -1);
+    CHECK(m.unsubscribe("raw") == -1);
+    CHECK(!m.subscribe("s", [](const std::string &) {}));
 }
 
 static void testReceive()
@@ -555,9 +565,10 @@ static void testReceive()
     CHECK(sub.count() == 5 && sub.msgs[4].first == "big/empty" && sub.msgs[4].second.empty());
     CHECK(topicCb.count() == 5 && topicCb.msgs[4].second.empty());
 
-    // 6. Too big for the heap: dropped, and the next message is fine
+    // 6. Too big for the heap (multipart and single-part): dropped, and the next message is fine
     g_largest_free = 500;
     deliver(c, "big/huge", big, 64);
+    deliver(c, "big/huge-single", big, 2048);
     g_largest_free = 1 << 20;
     CHECK(sub.count() == 5 && global.count() == 5 && topicCb.count() == 5);
     deliver(c, "big/after", "ok", 64);
@@ -670,6 +681,9 @@ static void testSubscribe()
     deliver(c, "re/7", "x", 64);
     deliver(c, "cb/3", "x", 64);
     CHECK(outer == 1 && inner == 101);
+    CHECK(m.unsubscribe(std::string("cb/3"))); // also removes setOnTopicCallback() entries
+    deliver(c, "cb/3", "x", 64);
+    CHECK(inner == 101);
 
     // Outbox full (-2) and failure (-1) are not a success
     g_subscribe_ret = -2;
