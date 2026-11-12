@@ -1,13 +1,14 @@
 #pragma once
 
-#include <vector>
-#include <string>
-#include <mqtt_client.h>
+#include <atomic>
+#include <cstdint>
 #include <functional>
+#include <mutex>
+#include <string>
+#include <vector>
+#include <mqtt_client.h>
 #include "esp_log.h"         
 #include "esp_idf_version.h" // check IDF version
-
-#define MAX_LEN_MQTT_URI 200
 
 typedef std::function<void(const std::string &message)> MessageReceivedCallback;
 typedef std::function<void(const std::string &topicStr, const std::string &message)> MessageReceivedCallbackWithTopic;
@@ -30,31 +31,53 @@ typedef struct
 class ESP32MQTTClient
 {
 private:
-    esp_mqtt_client_config_t _mqtt_config; // C so different naming
-    esp_mqtt_client_handle_t _mqtt_client;
+    esp_mqtt_client_config_t _mqtt_config = {}; // C so different naming
+    // The handle is replaced by loopStart() after disconnect()/forceStop(). Functions using it from
+    // application tasks hold a ClientRef, which keeps the old handle alive until they are done.
+    std::atomic<esp_mqtt_client_handle_t> _mqtt_client{nullptr};
+    std::atomic<int> _clientUsers{0};
+    class ClientRef;
 
     // MQTT related
-    bool _mqttConnected  = false;
-    bool _mqttClientStop = false;
-    const char *_mqttUri;
-    const char *_mqttUsername;
-    const char *_mqttPassword;
-    const char *_mqttClientName;
-    int _disableMQTTCleanSession;
-    char *_mqttLastWillTopic;
-    char *_mqttLastWillMessage;
-    int _mqttLastWillQos;
-    bool _mqttLastWillRetain;
+    // These flags are written by the MQTT task and read by the application task(s)
+    std::atomic<bool> _mqttConnected{false};
+    std::atomic<bool> _mqttClientStop{false};
+    std::atomic<bool> _mqttStarted{false}; // true while the esp-mqtt task of _mqtt_client is running
+    // Connection strings are copied, the caller does not need to keep them alive
+    std::string _mqttUri;
+    std::string _mqttUsername;
+    std::string _mqttPassword;
+    std::string _mqttClientName;
+    bool _mqttPersistentSession = false; // true: the broker keeps the session (MQTT clean session flag = false)
+    std::string _mqttLastWillTopic;
+    std::string _mqttLastWillMessage;
+    bool _mqttLastWillEnabled = false;
+    int _mqttLastWillQos = 0;
+    bool _mqttLastWillRetain = false;
 
-    int _mqttMaxInPacketSize;
-    int _mqttMaxOutPacketSize;
+    int _mqttMaxInPacketSize = 1024;
+    int _mqttMaxOutPacketSize = 1024;
 
     std::string _caCertStr;
     std::string _clientCertStr;
     std::string _clientKeyStr;
 
-    char *_buffer = nullptr;
-    char *_topic = nullptr;
+    // Message being received (MQTT task only). A message bigger than the receive buffer is
+    // delivered by esp-mqtt in several MQTT_EVENT_DATA events, the parts are joined here.
+    std::string _rxTopic;
+    std::string _rxPayload;
+    std::size_t _rxTotal = 0;      // total payload length of the message
+    std::size_t _rxReceived = 0;   // payload bytes received so far, kept or not
+    bool _rxInProgress = false;    // more parts of the message are expected
+    bool _rxDropping = false;      // the message is not kept (not enough memory, or a part is missing)
+
+    // Reused by the MQTT task to call the message callbacks without allocating for each message
+    std::vector<std::pair<MessageReceivedCallback, MessageReceivedCallbackWithTopic>> _rxSubscribersCache;
+    std::vector<OnMessageCallback> _rxMessageCallbacksCache;
+
+    // Protects the subscription list and all the callback lists below, which are used
+    // by both the application task(s) and the MQTT task
+    std::mutex _callbackMutex;
 
     struct TopicSubscriptionRecord
     {
@@ -65,7 +88,7 @@ private:
     std::vector<TopicSubscriptionRecord> _topicSubscriptionList;
 
     // General behaviour related
-    bool _enableSerialLogs;
+    bool _enableSerialLogs = false;
 
 #if ESP_IDF_VERSION < ESP_IDF_VERSION_VAL(5, 0, 0)
     static esp_err_t handleMQTT(esp_mqtt_event_handle_t event);
@@ -83,7 +106,9 @@ private:
     static void handleMQTT(void *handler_args, esp_event_base_t base, int32_t event_id, void *event_data);
 #endif // // IDF CHECK
 
-    void onMessageReceivedCallback(const char *topic, char *payload, unsigned int length);
+    void releaseClient();
+    bool subscribeImpl(const std::string &topic, MessageReceivedCallback callback, MessageReceivedCallbackWithTopic callbackWithTopic, uint8_t qos);
+    void onMessageReceivedCallback(esp_mqtt_event_handle_t event);
     bool mqttTopicMatch(const std::string &topic1, const std::string &topic2);
     void onEventCallback(esp_mqtt_event_handle_t event);
 
@@ -125,6 +150,10 @@ public:
      */
     ~ESP32MQTTClient();
 
+    // The object owns the underlying esp-mqtt client, it can not be copied
+    ESP32MQTTClient(const ESP32MQTTClient &) = delete;
+    ESP32MQTTClient &operator=(const ESP32MQTTClient &) = delete;
+
     /**
      * @brief Registers a callback function to be called when the MQTT client is connected.
      *
@@ -155,8 +184,8 @@ public:
     void setOnUnsubscribeCallback(OnUnsubscribeCallback callback);
 
     /**
-     * @brief Registers a callback function to be called when a message is received.
-     * Multipart messages will be reassembled into the original message.
+     * @brief Registers a callback function to be called when a message is received,
+     * whatever its topic. Multipart messages will be reassembled into the original message.
      *
      * @param callback The callback function with the signature void(char *topic,
      * char *payload, int msgId, int retain, int qos, bool dup) to be registered.
@@ -204,12 +233,20 @@ public:
     void enableDebuggingMessages(const bool enabled = true);
 
     /**
-     * @brief Disables persistent connections for the MQTT client.
-     * 
-     * By default, MQTT connections are persistent. This function disables
-     * the clean session flag, which means the broker will not store
-     * session information between connections.
-     * 
+     * @brief Requests a persistent session (clean session flag = false).
+     *
+     * The broker keeps the subscriptions and the queued QoS 1/2 messages of this
+     * client between connections. A fixed client name is required for this to be useful.
+     *
+     * @note Must be called before the first loopStart() execution.
+     */
+    void enablePersistence();
+
+    /**
+     * @brief Requests a clean session (clean session flag = true). This is the default.
+     *
+     * The broker does not store session information between connections.
+     *
      * @note Must be called before the first loopStart() execution.
      */
     void disablePersistence();
@@ -224,10 +261,11 @@ public:
      * @param topic The topic to publish the last will message to.
      * @param message The message content to publish.
      * @param retain Whether the message should be retained by the broker.
+     * @param qos The QoS level (0-2) of the last will message. Defaults to 0.
      * 
      * @note Must be set before the first loopStart() call.
      */
-    void enableLastWillMessage(const char *topic, const char *message, const bool retain = false);
+    void enableLastWillMessage(const char *topic, const char *message, const bool retain = false, const int qos = 0);
 
     /**
      * @brief Disables automatic reconnection for the MQTT client.
@@ -366,7 +404,8 @@ public:
      * @param length The length of the payload. Defaults to 0.
      * @param async Whether to enqueue the message for asynchronous publishing.
      *               Defaults to true. False means blocking until the message is published.
-     * @return Message ID on success, -1 on failure.
+     * @return Message ID on success, -1 on failure (including when the client is not started:
+     *         before loopStart() or after disconnect() / forceStop()).
      */
     int publish(const char *topic, int qos, bool retain, const char *payload = nullptr, int length = 0, bool async = true);
     
@@ -400,21 +439,19 @@ public:
      *                       of MAC address in hex format.
      * @note On older versions, this may not work if not set before other operations.
      */
-    inline void setMqttClientName(const char *mqttClientName) { _mqttClientName = mqttClientName; };
+    inline void setMqttClientName(const char *mqttClientName) { _mqttClientName = mqttClientName ? mqttClientName : ""; };
 
     /**
      * @brief Sets the MQTT URI including protocol and port.
      * 
+     * Like the other settings, it is used by the next loopStart(). Change it only while the
+     * client is stopped (before loopStart() or after disconnect()).
+     *
      * @param uri The complete MQTT URI (e.g., "mqtt://broker.example.com:1883").
      * @param username The username for authentication. Defaults to empty string.
      * @param password The password for authentication. Defaults to empty string.
      */
-    inline void setURI(const char *uri, const char *username = "", const char *password = "")
-    {
-        _mqttUri = uri;
-        _mqttUsername = username;
-        _mqttPassword = password;
-    };
+    void setURI(const char *uri, const char *username = "", const char *password = "");
 
     /**
      * @brief Sets the MQTT URL and automatically generates the URI based on port.
@@ -422,6 +459,9 @@ public:
      * The library will automatically determine the appropriate protocol (mqtt/mqtts/ws/wss)
      * based on the port number and construct the full URI.
      * 
+     * The guess can be overridden by giving the scheme in the url (e.g. "mqtts://broker.example.com"
+     * with port 443), and a path can be appended for WebSocket brokers (e.g. "broker.example.com/mqtt").
+     *
      * @param url The MQTT broker URL without protocol (e.g., "broker.example.com").
      * @param port The port number. Common ports:
      *             - 1883: MQTT (plain)
@@ -433,47 +473,7 @@ public:
      * @param username The username for authentication. Defaults to empty string.
      * @param password The password for authentication. Defaults to empty string.
      */
-    inline void setURL(const char *url, const uint16_t port, const char *username = "", const char *password = "")
-    { 
-        char *uri = (char *)malloc(MAX_LEN_MQTT_URI);
-        if (uri == nullptr || url == nullptr) {
-            free(uri);
-            ESP_LOGE("ESP32MQTTClient", "MQTT URL allocation failed");
-            return;
-        }
-        // Determine the URI scheme based on the port, then build the URI in one call
-        const char *scheme = nullptr;
-        switch (port)
-        {
-        case 8883:
-            scheme = "mqtts";
-            break;
-        case 1883:
-            scheme = "mqtt";
-            break;
-        case 443:
-        case 8884:
-            scheme = "wss";
-            break;
-        case 80:
-        case 1884:
-            scheme = "ws";
-            break;
-        default:
-            // Fallback for unexpected ports
-            scheme = "mqtt";
-            break;
-        }
-        // Use snprintf for safety; assume uri points to a buffer of size uri_len
-        snprintf(uri, MAX_LEN_MQTT_URI, "%s://%s:%u", scheme, url, port);
-        if (_enableSerialLogs)
-        {
-            ESP_LOGI("ESP32MQTTClient", "MQTT uri %s", uri);
-        }
-        _mqttUri = uri;
-        _mqttUsername = username;
-        _mqttPassword = password;
-    };
+    void setURL(const char *url, const uint16_t port, const char *username = "", const char *password = "");
 
     /**
      * @brief Checks if the MQTT client is currently connected to the broker.
@@ -491,21 +491,21 @@ public:
      * @param client The MQTT client handle to check.
      * @return True if the client handle matches this instance, false otherwise.
      */
-    inline bool isMyTurn(esp_mqtt_client_handle_t client) const { return _mqtt_client == client; };
+    inline bool isMyTurn(esp_mqtt_client_handle_t client) const { return _mqtt_client.load() == client; };
 
     /**
      * @brief Gets the client name (ID) of the MQTT client.
      *
      * @return The client name as a const char pointer.
      */
-    inline const char *getClientName() { return _mqttClientName; };
+    inline const char *getClientName() { return _mqttClientName.c_str(); };
 
     /**
      * @brief Gets the URI of the MQTT broker.
      *
      * @return The broker URI as a const char pointer.
      */
-    inline const char *getURI() { return _mqttUri; };
+    inline const char *getURI() { return _mqttUri.c_str(); };
 
     /**
      * @brief Prints detailed error information for MQTT errors.
@@ -521,13 +521,16 @@ public:
      * @brief Connects the MQTT client to the broker and starts the event loop.
      *
      * This function initializes the MQTT client with the configured settings
-     * and attempts to establish a connection to the broker. The connection
-     * process is blocking until either a connection is established or an
-     * error occurs.
+     * and starts it. The connection itself is established in the background,
+     * use the onConnect callback or isConnected() to know when it is ready.
+     *
+     * Calling it again while the client is running does not create a second client,
+     * it only asks the existing one to reconnect now (useful when the network comes back).
+     * After disconnect() or forceStop() it creates the client again with the current settings.
      * 
      * @note All connection parameters (URI, credentials, certificates, etc.)
      *       must be set before calling this method.
-     * @return True if the connection is successful, false otherwise.
+     * @return True if the client was started, false otherwise.
      */
     bool loopStart();
 
@@ -535,7 +538,12 @@ public:
      * @brief Disconnects the MQTT client from the broker and stops the event loop.
      * 
      * This call is blocking and will wait until the client is stopped cleanly.
+     * The wait for the broker disconnection is limited to 5 seconds; stopping the
+     * client itself can still block while a MQTT callback is running.
      * It will trigger the onDisconnect callbacks before stopping.
+     *
+     * @note Must not be called from a MQTT callback, the client can not be stopped from its own task.
+     * @note loopStart(), disconnect() and forceStop() must be called from one task at a time.
      */
     void disconnect();
 

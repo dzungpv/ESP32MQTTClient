@@ -41,6 +41,7 @@ void setMqttClientName(const char *mqttClientName);
 void setKeepAlive(uint16_t keepAliveSeconds = 60);
 void setAutoReconnect(bool choice);
 void disableAutoReconnect();
+void enablePersistence();
 void disablePersistence();
 ```
 
@@ -50,11 +51,15 @@ void disablePersistence();
   - 8883: MQTT over TLS/SSL
   - 80/443: WebSocket (plain/TLS)
   - 1884/8884: WebSocket alternatives
+  - The guess can be overridden with a scheme in the url (`"mqtts://broker.example.com"` with port 443), and a path can be appended for WebSocket brokers (`"broker.example.com/mqtt"`)
 - `setMqttClientName()`: Sets client ID (defaults to ESP32_%CHIPID%)
 - `setKeepAlive()`: Sets keep-alive interval (default: 60s, ESP-IDF default: 15s)
 - `setAutoReconnect()`: Enables/disables automatic reconnection
 - `disableAutoReconnect()`: Disables automatic reconnection
-- `disablePersistence()`: Disables persistent connections (clean session)
+- `enablePersistence()`: Requests a persistent session (clean session = false)
+- `disablePersistence()`: Requests a clean session (this is the default)
+
+The URI, credentials, client name, certificates and last will are copied by the library; the caller does not need to keep them alive.
 
 #### Security and Certificates
 ```cpp
@@ -66,7 +71,7 @@ Sets TLS/SSL certificates and keys for secure connections (PEM-encoded strings).
 
 #### Last Will and Testament
 ```cpp
-void enableLastWillMessage(const char *topic, const char *message, const bool retain = false);
+void enableLastWillMessage(const char *topic, const char *message, const bool retain = false, const int qos = 0);
 ```
 Configures a last will message that the broker publishes when the client disconnects unexpectedly.
 
@@ -91,8 +96,8 @@ bool isConnected() const;
 bool isMyTurn(esp_mqtt_client_handle_t client) const;
 ```
 
-- `loopStart()`: Connects to broker and starts event loop (blocking)
-- `disconnect()`: Cleanly disconnects and stops event loop (blocking)
+- `loopStart()`: Creates and starts the client; the connection is made in the background. Calling it again while running only asks the existing client to reconnect now; after `disconnect()`/`forceStop()` it starts again with the current settings
+- `disconnect()`: Cleanly disconnects and stops event loop (blocking, must not be called from a MQTT callback). The wait for the broker disconnection is limited to 5 seconds
 - `forceStop()`: Immediately stops client without clean disconnect
 - `isConnected()`: Returns current connection status
 - `isMyTurn()`: Checks if client handle matches this instance (useful for multi-client setups)
@@ -183,16 +188,28 @@ void printError(esp_mqtt_error_codes_t *error_handle);
 
 ## New Functions
 
-### `setOnMessageCallback(MessageReceivedCallbackWithTopic callback)`
+### `setOnMessageCallback(OnMessageCallback callback)`
 
 Sets a global callback function that is invoked for any incoming message, regardless of the topic. This is useful for centralized logging or handling all messages in one place.
 
 **Example:**
 ```cpp
-mqttClient.setOnMessageCallback([](const std::string &topic, const std::string &payload) {
-    ESP_LOGI("MAIN", "Global handler: %s: %s", topic.c_str(), payload.c_str());
+mqttClient.setOnMessageCallback([](esp_mqtt_client_handle_t client, char *topic, char *payload, int retain, int qos, bool dup) {
+    ESP_LOGI("MAIN", "Global handler: %s: %s", topic, payload);
 });
 ```
+
+## Behaviour notes
+
+- **Large messages.** A message bigger than the receive buffer (`setMaxPacketSize()`, 1024 bytes by default) is reassembled and delivered once, complete, to every kind of callback. It is dropped with an error log if there is not enough free memory to hold it.
+- **Binary payloads.** `publish(std::string)` and the `std::string` subscription callbacks keep `\0` bytes. The `char *payload` callbacks get a C string and no length, so they only see the data up to the first `\0`.
+- **Wildcards.** Topic filters follow the MQTT specification, including several `+`, `+` combined with `#`, `a/#` matching `a`, and `$` topics not matched by a leading wildcard.
+- **Thread safety.** Callbacks can be registered, messages published and topics subscribed/unsubscribed from any task, including from inside a callback, and while another task restarts the client. Callbacks run on the MQTT task. `loopStart()`, `disconnect()` and `forceStop()` must be called from one task at a time, and the connection settings (`setURI()`, `setURL()`, ...) changed only while the client is stopped.
+- **Stopped client.** After `disconnect()` or `forceStop()`, `publish()` returns `-1` / `false` until the next `loopStart()`. esp-mqtt discards the messages still queued when the client stops.
+- **Several clients.** Several `ESP32MQTTClient` objects can run at the same time (for example one per broker); each has its own esp-mqtt task, callbacks and settings. A function registered on several clients can tell them apart with `isMyTurn(client)`.
+  - Give each client its own `setMqttClientName()` when they use the same broker: without it, esp-mqtt uses the same default ID (`ESP32_` + MAC) for both, and the broker disconnects one each time the other connects.
+  - A callback of one client can publish with another one (a one-way bridge). Do not do it in both directions: each esp-mqtt task holds its own client's lock while running callbacks, and every publish/subscribe call takes the target client's lock (the queued `async` publish too), so two callbacks calling each other's client at the same moment can deadlock. For a two-way bridge, pass the messages to a task of your own (e.g. through a FreeRTOS queue) and publish from there.
+- **`disablePersistence()` changed.** It used to request a persistent session by mistake. Call `enablePersistence()` if you relied on that.
 
 ### `setAutoReconnect(bool choice)`
 
@@ -246,6 +263,14 @@ mqttClient.setOnTopicCallback("home/+/temperature", 1,
     [](esp_mqtt_client_handle_t client, char *topic, char *payload, int retain, int qos, bool dup) {
         ESP_LOGI("TEMP", "Topic: %s, Value: %s", topic, payload);
     });
+```
+
+## Host Tests
+
+`test/host` contains unit tests that run on the development machine (macOS or Linux) against a fake esp-mqtt. They compile the library with the real `mqtt_client.h` of ESP-IDF 4.4 and 5.3 (downloaded on first run) and run under the address, undefined-behaviour and thread sanitizers:
+
+```bash
+make -C test/host
 ```
 
 ## Building Examples

@@ -1,0 +1,26 @@
+name: Host tests
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  host_tests:
+    name: Library unit tests with sanitizers (IDF 4.4 and 5.3 headers)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      # ThreadSanitizer does not support the default address randomization of recent kernels
+      - name: Allow ThreadSanitizer memory mappings
+        run: sudo sysctl vm.mmap_rnd_bits=28
+
+      - name: Build and run host tests
+        run: make -C test/host
